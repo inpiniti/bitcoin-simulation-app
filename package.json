@@ -1,18 +1,36 @@
 {
   "name": "bitcoin-simulation-app",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "test": "jest --watchAll=false"
   },
   "dependencies": {
+    "@expo/metro-runtime": "~55.0.6",
+    "@react-native-async-storage/async-storage": "^3.0.1",
+    "@supabase/supabase-js": "^2.100.0",
+    "@testing-library/react-native": "^13.3.3",
+    "babel-preset-expo": "^55.0.12",
     "expo": "~55.0.8",
+    "expo-constants": "~55.0.9",
+    "expo-linking": "~55.0.8",
+    "expo-router": "~55.0.7",
     "expo-status-bar": "~55.0.4",
+    "jest": "^30.3.0",
+    "jest-expo": "^55.0.11",
+    "lucide-react-native": "^1.0.1",
+    "nativewind": "^4.2.3",
     "react": "19.2.0",
-    "react-native": "0.83.2"
+    "react-dom": "19.2.0",
+    "react-native": "0.83.2",
+    "react-native-svg": "15.15.3",
+    "react-native-web": "^0.21.0",
+    "tailwindcss": "^3.4.19",
+    "zustand": "^5.0.12"
   },
   "private": true
 }
