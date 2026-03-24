@@ -22,12 +22,13 @@ describe('supabaseClient', () => {
     expect(supabase).toBeDefined();
   });
 
-  it('should call createClient with env variables', () => {
+  it('should call createClient with env variables when getSupabaseClient is invoked', () => {
     process.env.EXPO_PUBLIC_SUPABASE_URL = 'https://test.supabase.co';
     process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key';
 
     const { createClient } = require('@supabase/supabase-js');
-    require('../lib/supabaseClient');
+    const { getSupabaseClient } = require('../lib/supabaseClient');
+    getSupabaseClient();
 
     expect(createClient).toHaveBeenCalledWith(
       'https://test.supabase.co',
