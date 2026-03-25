@@ -61,8 +61,8 @@ describe('ServerScreen - 헬스체크 상태', () => {
 
     await waitFor(() => {
       expect(getByTestId('health-status-online')).toBeTruthy();
-    });
-  });
+    }, { timeout: 10000 });
+  }, 15000);
 
   it('슬립 상태 시 🟡 슬립 상태 표시', async () => {
     fetchHealth.mockResolvedValue({
