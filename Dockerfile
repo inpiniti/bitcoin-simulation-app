@@ -5,7 +5,7 @@ WORKDIR /app
 
 # 의존성 설치
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --legacy-peer-deps
 
 # 소스 복사
 COPY . .
