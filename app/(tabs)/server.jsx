@@ -178,13 +178,12 @@ function AutoTradeSettingsSection({ settings, isLoading }) {
 }
 
 function LogItem({ item }) {
-  const isSuccess = item.status === 'success';
-  const buyList = Array.isArray(item.buy_tickers) && item.buy_tickers.length > 0
-    ? item.buy_tickers.join(', ')
-    : null;
-  const sellList = Array.isArray(item.sell_tickers) && item.sell_tickers.length > 0
-    ? item.sell_tickers.join(', ')
-    : null;
+  // error 컬럼이 없으면 성공 (null/undefined = success)
+  const isSuccess = !item.error;
+  // logs 컬럼은 배열 - 첫 번째 항목을 요약으로 표시
+  const logSummary = Array.isArray(item.logs) && item.logs.length > 0
+    ? item.logs[0]
+    : (item.error || null);
 
   return (
     <View style={styles.logItem} testID={`log-item-${item.id}`}>
@@ -199,19 +198,19 @@ function LogItem({ item }) {
           <Badge label="테스트" variant="default" />
         ) : null}
       </View>
-      {item.log_summary ? (
-        <Text style={styles.logSummary}>{item.log_summary}</Text>
+      {logSummary ? (
+        <Text style={styles.logSummary}>{logSummary}</Text>
       ) : null}
-      {buyList ? (
+      {item.buy_signals != null ? (
         <Text style={styles.logTickers}>
-          <Text style={styles.tickerLabel}>매수: </Text>
-          {buyList}
+          <Text style={styles.tickerLabel}>매수신호: </Text>
+          {item.buy_signals}건 / 주문: {item.buy_orders ?? 0}건
         </Text>
       ) : null}
-      {sellList ? (
+      {item.sell_signals != null ? (
         <Text style={styles.logTickers}>
-          <Text style={styles.tickerLabel}>매도: </Text>
-          {sellList}
+          <Text style={styles.tickerLabel}>매도신호: </Text>
+          {item.sell_signals}건 / 주문: {item.sell_orders ?? 0}건
         </Text>
       ) : null}
     </View>
@@ -283,7 +282,7 @@ export default function ServerScreen() {
     try {
       const { data, error } = await supabase
         .from('auto_trade_dl_logs')
-        .select('id, created_at, status, buy_tickers, sell_tickers, log_summary, is_test')
+        .select('id, created_at, is_test, buy_signals, sell_signals, buy_orders, sell_orders, logs, error')
         .order('created_at', { ascending: false })
         .limit(20);
 

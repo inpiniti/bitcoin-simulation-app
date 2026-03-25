@@ -76,11 +76,11 @@ function ModelItem({ item, onDelete }) {
       </View>
       <Text style={styles.modelDate}>{formatDate(item.created_at)}</Text>
       <View style={styles.metricsRow}>
-        {item.f1_score != null && (
+        {item.f1 != null && (
           <MetricBadge
             testID={`badge-f1-${item.id}`}
             label="F1"
-            value={item.f1_score}
+            value={item.f1}
             color={METRIC_COLORS.f1}
           />
         )}
@@ -92,19 +92,19 @@ function ModelItem({ item, onDelete }) {
             color={METRIC_COLORS.auc}
           />
         )}
-        {item.precision_score != null && (
+        {item.precision != null && (
           <MetricBadge
             testID={`badge-precision-${item.id}`}
             label="Precision"
-            value={item.precision_score}
+            value={item.precision}
             color={METRIC_COLORS.precision}
           />
         )}
-        {item.recall_score != null && (
+        {item.recall != null && (
           <MetricBadge
             testID={`badge-recall-${item.id}`}
             label="Recall"
-            value={item.recall_score}
+            value={item.recall}
             color={METRIC_COLORS.recall}
           />
         )}
@@ -131,7 +131,7 @@ function DLModelsTab() {
     try {
       const { data, error: queryError } = await supabase
         .from('ml_models')
-        .select('id, name, created_at, accuracy, f1_score, auc, precision_score, recall_score, is_active')
+        .select('id, name, created_at, accuracy, feature_count, sample_count')
         .order('created_at', { ascending: false });
 
       if (queryError) {
@@ -582,7 +582,7 @@ export default function DeepLearningScreen() {
     try {
       const { data } = await supabase
         .from('ml_models')
-        .select('id, name, created_at, accuracy, f1_score, auc, precision_score, recall_score, is_active')
+        .select('id, name, created_at, accuracy, feature_count, sample_count')
         .order('created_at', { ascending: false });
       if (data) setModels(data);
     } catch (_) {

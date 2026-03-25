@@ -107,7 +107,7 @@ function SettingsListTab() {
   const handleDelete = useCallback((item) => {
     Alert.alert(
       '설정 삭제',
-      `"${item.ticker}" 설정을 삭제하시겠습니까?`,
+      `"${item.name || item.ticker_group_key || '설정'}" 설정을 삭제하시겠습니까?`,
       [
         { text: '취소', style: 'cancel' },
         {
@@ -229,14 +229,14 @@ function SettingsListTab() {
           renderItem={({ item }) => (
             <View style={styles.settingItem} testID={`setting-item-${item.id}`}>
               <View style={styles.settingHeader}>
-                <Text style={styles.settingTicker}>{item.ticker}</Text>
+                <Text style={styles.settingTicker}>{item.name || item.ticker_group_key || '-'}</Text>
                 <Badge
                   testID={`badge-active-${item.id}`}
                   label={item.is_active ? '활성' : '비활성'}
                   variant={item.is_active ? 'success' : 'default'}
                 />
               </View>
-              <Text style={styles.settingStrategy}>{item.strategy}</Text>
+              <Text style={styles.settingStrategy}>{item.ai_model_key || item.ticker_group_key || '-'}</Text>
               <View style={styles.settingFooter}>
                 <Switch
                   testID={`toggle-${item.id}`}
