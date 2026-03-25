@@ -38,7 +38,7 @@
     },
     "owner": "inpiniti",
     "runtimeVersion": {
-      "policy": "appVersion"
+      "policy": "sdkVersion"
     },
     "updates": {
       "url": "https://u.expo.dev/bc3555d6-e50b-4a39-8f1e-1b7c55bf81c2"
