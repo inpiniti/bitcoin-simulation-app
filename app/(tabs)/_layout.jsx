@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Activity, MessageCircle, Brain, Settings } from 'lucide-react-native';
+import { Activity, MessageCircle, Brain, Settings, Newspaper } from 'lucide-react-native';
 import { Colors } from '../../constants/colors';
 
 export default function TabLayout() {
@@ -56,6 +56,15 @@ export default function TabLayout() {
           title: '딥러닝스튜디오',
           tabBarIcon: ({ color, size }) => (
             <Brain color={color} size={size} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="news"
+        options={{
+          title: '뉴스',
+          tabBarIcon: ({ color, size }) => (
+            <Newspaper color={color} size={size} />
           ),
         }}
       />
