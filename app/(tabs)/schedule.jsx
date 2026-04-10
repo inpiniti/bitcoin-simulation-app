@@ -30,18 +30,18 @@ import { sampleSettings, sampleTradeLogs } from '../../lib/sampleData';
 
 const TABS = [
   { key: 'settings', label: '설정' },
-  { key: 'logs',     label: '로그' },
+  { key: 'logs', label: '로그' },
 ];
 
 const MARKETS = [
-  { key: 'kospi',         label: 'KOSPI' },
-  { key: 'kosdaq',        label: 'KOSDAQ' },
-  { key: 'nasdaq',        label: 'NASDAQ' },
-  { key: 'nyse',          label: 'NYSE' },
+  { key: 'kospi', label: 'KOSPI' },
+  { key: 'kosdaq', label: 'KOSDAQ' },
+  { key: 'nasdaq', label: 'NASDAQ' },
+  { key: 'nyse', label: 'NYSE' },
 ];
 
 const PERIODS = [
-  { key: 7,  label: '7일' },
+  { key: 7, label: '7일' },
   { key: 14, label: '14일' },
   { key: 30, label: '30일' },
   { key: 60, label: '60일' },
@@ -55,7 +55,9 @@ function ScreenHeader() {
       <View>
         <Text style={styles.headerEyebrow}>예약 · 자동매매</Text>
         <Text style={styles.headerTitle}>자동매매 예약</Text>
-        <Text style={styles.headerSub}>설정 상태와 실행 로그를 함께 관리해요</Text>
+        <Text style={styles.headerSub}>
+          설정 상태와 실행 로그를 함께 관리해요
+        </Text>
       </View>
       <View style={styles.headerPill}>
         <Text style={styles.headerPillText}>스케줄</Text>
@@ -150,17 +152,23 @@ function SettingsTab() {
       setIsActive(s.is_active ?? false);
       setUseSampleData(true);
       setNotice('자동매매 설정은 샘플 상태로 먼저 보여주고 있어요.');
+    } finally {
+      setLoading(false);
     }
-    finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { loadSetting(); }, [loadSetting]);
+  useEffect(() => {
+    loadSetting();
+  }, [loadSetting]);
 
   const handleSave = useCallback(async () => {
     setSaving(true);
     try {
       if (useSampleData) {
-        Alert.alert('저장 확인', '샘플 설정을 저장한 것처럼 화면에 반영했어요.');
+        Alert.alert(
+          '저장 확인',
+          '샘플 설정을 저장한 것처럼 화면에 반영했어요.',
+        );
         return;
       }
       const payload = {
@@ -186,18 +194,21 @@ function SettingsTab() {
     }
   }, [settingId, market, period, buyThreshold, sellThreshold, isActive]);
 
-  const handleToggle = useCallback(async (val) => {
-    setIsActive(val);
-    if (useSampleData) return;
-    if (settingId) {
-      try {
-        await toggleSetting(settingId, val);
-      } catch (e) {
-        Alert.alert('토글 실패', e.message);
-        setIsActive(!val);
+  const handleToggle = useCallback(
+    async (val) => {
+      setIsActive(val);
+      if (useSampleData) return;
+      if (settingId) {
+        try {
+          await toggleSetting(settingId, val);
+        } catch (e) {
+          Alert.alert('토글 실패', e.message);
+          setIsActive(!val);
+        }
       }
-    }
-  }, [settingId, useSampleData]);
+    },
+    [settingId, useSampleData],
+  );
 
   if (loading) {
     return (
@@ -236,9 +247,13 @@ function SettingsTab() {
           <Text style={styles.activeCardSep}>·</Text>
           <Text style={styles.activeCardItem}>XGBoost</Text>
           <Text style={styles.activeCardSep}>·</Text>
-          <Text style={styles.activeCardItem}>매수 {Math.round(buyThreshold * 100)}%↑</Text>
+          <Text style={styles.activeCardItem}>
+            매수 {Math.round(buyThreshold * 100)}%↑
+          </Text>
           <Text style={styles.activeCardSep}>·</Text>
-          <Text style={styles.activeCardItem}>매도 {Math.round(sellThreshold * 100)}%↑</Text>
+          <Text style={styles.activeCardItem}>
+            매도 {Math.round(sellThreshold * 100)}%↑
+          </Text>
         </View>
       </View>
 
@@ -250,7 +265,9 @@ function SettingsTab() {
 
       <Text style={[styles.fieldLabel, { marginTop: 20 }]}>모델</Text>
       <View style={styles.modelBadge}>
-        <Badge color="blue" size="medium">XGBoost</Badge>
+        <Badge color="blue" size="medium">
+          XGBoost
+        </Badge>
       </View>
 
       <Text style={[styles.fieldLabel, { marginTop: 20 }]}>매수 임계값</Text>
@@ -287,8 +304,10 @@ function formatDateTime(iso) {
   if (!iso) return '-';
   const d = new Date(iso);
   return d.toLocaleString('ko-KR', {
-    month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
   });
 }
 
@@ -314,10 +333,16 @@ function LogsTab() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   if (loading) {
-    return <View style={styles.center}><ActivityIndicator color={tdsColors.blue500} /></View>;
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator color={tdsColors.blue500} />
+      </View>
+    );
   }
 
   if (logs.length === 0) {
@@ -325,7 +350,9 @@ function LogsTab() {
       <View style={styles.center}>
         <Text style={styles.emptyIcon}>📝</Text>
         <Text style={styles.emptyTitle}>아직 실행된 로그가 없어요</Text>
-        <Text style={styles.emptyDesc}>자동매매를 활성화하면 실행 기록이 여기에 쌓여요</Text>
+        <Text style={styles.emptyDesc}>
+          자동매매를 활성화하면 실행 기록이 여기에 쌓여요
+        </Text>
       </View>
     );
   }
@@ -339,7 +366,9 @@ function LogsTab() {
       )}
       <View style={styles.logStats}>
         <Text style={styles.logStatsText}>
-          전체 {logs.length}건 · 매수 {logs.filter((l) => l.action === 'buy').length}건 · 매도 {logs.filter((l) => l.action === 'sell').length}건
+          전체 {logs.length}건 · 매수{' '}
+          {logs.filter((l) => l.action === 'buy').length}건 · 매도{' '}
+          {logs.filter((l) => l.action === 'sell').length}건
         </Text>
       </View>
       {logs.map((log) => (
@@ -359,7 +388,9 @@ function LogsTab() {
               </Badge>
             )}
             {log.price != null && (
-              <Text style={styles.logPrice}>₩{log.price.toLocaleString('ko-KR')}</Text>
+              <Text style={styles.logPrice}>
+                ₩{log.price.toLocaleString('ko-KR')}
+              </Text>
             )}
             {log.message && <Text style={styles.logMsg}>{log.message}</Text>}
           </View>
@@ -400,7 +431,12 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   headerEyebrow: { fontSize: 12, color: tdsDark.textTertiary, marginBottom: 2 },
-  headerTitle: { fontSize: 28, fontWeight: '800', color: tdsDark.textPrimary, letterSpacing: -0.5 },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: tdsDark.textPrimary,
+    letterSpacing: -0.5,
+  },
   headerSub: { fontSize: 13, color: tdsDark.textSecondary, marginTop: 2 },
   headerPill: {
     marginTop: 12,
@@ -413,7 +449,12 @@ const styles = StyleSheet.create({
   },
   headerPillText: { fontSize: 12, color: tdsColors.blue700, fontWeight: '700' },
   tabContent: { paddingHorizontal: 16, paddingBottom: 32 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+  },
   noticeBox: {
     marginBottom: 16,
     paddingHorizontal: 14,
@@ -478,8 +519,18 @@ const styles = StyleSheet.create({
 
   emptyText: { color: tdsDark.textSecondary, fontSize: 14 },
   emptyIcon: { fontSize: 36, marginBottom: 12 },
-  emptyTitle: { fontSize: 15, fontWeight: '600', color: tdsDark.textPrimary, marginBottom: 6 },
-  emptyDesc: { fontSize: 13, color: tdsDark.textSecondary, textAlign: 'center', lineHeight: 19 },
+  emptyTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: tdsDark.textPrimary,
+    marginBottom: 6,
+  },
+  emptyDesc: {
+    fontSize: 13,
+    color: tdsDark.textSecondary,
+    textAlign: 'center',
+    lineHeight: 19,
+  },
 
   activeCard: {
     backgroundColor: tdsDark.bgCard,
@@ -498,8 +549,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 10,
   },
-  activeCardTitle: { fontSize: 14, fontWeight: '600', color: tdsDark.textPrimary },
-  activeCardInfo: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
+  activeCardTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: tdsDark.textPrimary,
+  },
+  activeCardInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
   activeCardItem: { fontSize: 13, color: tdsDark.textSecondary },
   activeCardSep: { fontSize: 13, color: tdsDark.border },
 

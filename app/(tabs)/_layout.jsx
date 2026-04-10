@@ -59,7 +59,9 @@ export default function TabLayout() {
         name="ticker"
         options={{
           title: '티커',
-          tabBarIcon: ({ color, size }) => <BarChart2 color={color} size={size} />,
+          tabBarIcon: ({ color, size }) => (
+            <BarChart2 color={color} size={size} />
+          ),
         }}
       />
     </Tabs>

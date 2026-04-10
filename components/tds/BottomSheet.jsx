@@ -1,4 +1,11 @@
-import { Modal, View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
+import {
+  Modal,
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Animated,
+} from 'react-native';
 import { tdsDark, tdsColors } from '../../constants/tdsColors';
 import { useEffect, useRef } from 'react';
 
@@ -23,8 +30,14 @@ export function BottomSheet({ open, onClose, title, children, cta }) {
       animationType="none"
       statusBarTranslucent
     >
-      <TouchableOpacity style={styles.dimmer} onPress={onClose} activeOpacity={1} />
-      <Animated.View style={[styles.panel, { transform: [{ translateY: slideAnim }] }]}>
+      <TouchableOpacity
+        style={styles.dimmer}
+        onPress={onClose}
+        activeOpacity={1}
+      />
+      <Animated.View
+        style={[styles.panel, { transform: [{ translateY: slideAnim }] }]}
+      >
         <View style={styles.handle} />
         {title && <Text style={styles.title}>{title}</Text>}
         <View style={styles.content}>{children}</View>

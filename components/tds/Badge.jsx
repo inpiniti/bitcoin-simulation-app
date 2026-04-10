@@ -6,6 +6,7 @@ const colorMap = {
   green:  { fill: tdsColors.green500,  weak: tdsColors.green50,  text: tdsColors.green500 },
   red:    { fill: tdsColors.red500,    weak: tdsColors.red50,    text: tdsColors.red600 },
   orange: { fill: tdsColors.orange500, weak: '#fff3e0',          text: tdsColors.orange500 },
+  grey:   { fill: tdsColors.grey500,   weak: tdsColors.grey100,  text: tdsColors.grey600 },
 };
 
 const sizeMap = {

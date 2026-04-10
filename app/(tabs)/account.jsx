@@ -40,7 +40,14 @@ function SkeletonRow() {
 
 // ─── 이니셜 뱃지 ──────────────────────────────────────────────────────────────
 
-const BADGE_COLORS = ['#3182f6', '#f04452', '#03b26c', '#fe9800', '#8b5cf6', '#06b6d4'];
+const BADGE_COLORS = [
+  '#3182f6',
+  '#f04452',
+  '#03b26c',
+  '#fe9800',
+  '#8b5cf6',
+  '#06b6d4',
+];
 
 function InitialBadge({ name, ticker }) {
   const display = name || ticker || '?';
@@ -57,7 +64,8 @@ function InitialBadge({ name, ticker }) {
 
 function PortfolioSummary({ balance }) {
   if (!balance || balance.length === 0) return null;
-  const avgRate = balance.reduce((sum, b) => sum + (b.profit_rate || 0), 0) / balance.length;
+  const avgRate =
+    balance.reduce((sum, b) => sum + (b.profit_rate || 0), 0) / balance.length;
   const rateColor = getPriceColor(avgRate);
   return (
     <View style={styles.portfolioCard}>
@@ -71,7 +79,12 @@ function PortfolioSummary({ balance }) {
         {balance.map((b) => (
           <View key={b.ticker} style={styles.portfolioChip}>
             <Text style={styles.portfolioChipName}>{b.name}</Text>
-            <Text style={[styles.portfolioChipRate, { color: getPriceColor(b.profit_rate) }]}>
+            <Text
+              style={[
+                styles.portfolioChipRate,
+                { color: getPriceColor(b.profit_rate) },
+              ]}
+            >
               {formatRate(b.profit_rate)}
             </Text>
           </View>
@@ -122,7 +135,12 @@ function OrderSheet({ item, side, open, onClose, useSampleData }) {
       onClose={onClose}
       title={`${item.name} ${label}`}
       cta={
-        <Button onPress={handleOrder} display="full" loading={loading} color={btnColor}>
+        <Button
+          onPress={handleOrder}
+          display="full"
+          loading={loading}
+          color={btnColor}
+        >
           {label}하기
         </Button>
       }
@@ -135,7 +153,9 @@ function OrderSheet({ item, side, open, onClose, useSampleData }) {
         <Text style={styles.sheetLabel}>평균 구매가</Text>
         <Text style={styles.sheetValue}>{formatPrice(item.avg_price)}</Text>
       </View>
-      <Text style={[styles.sheetLabel, { marginTop: 16, marginBottom: 6 }]}>수량</Text>
+      <Text style={[styles.sheetLabel, { marginTop: 16, marginBottom: 6 }]}>
+        수량
+      </Text>
       <TextInput
         style={styles.qtyInput}
         value={qty}
@@ -198,7 +218,8 @@ function BalanceCard({ item, onOrder }) {
 
 function DepositHeader({ deposit, balance }) {
   const evalAmount = balance.reduce(
-    (sum, b) => sum + (b.current_price || b.avg_price || 0) * (b.qty || 0), 0
+    (sum, b) => sum + (b.current_price || b.avg_price || 0) * (b.qty || 0),
+    0,
   );
   const total = deposit + evalAmount;
   return (
@@ -221,7 +242,10 @@ function DepositHeader({ deposit, balance }) {
 }
 
 function ScreenHeader() {
-  const today = new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' });
+  const today = new Date().toLocaleDateString('ko-KR', {
+    month: 'long',
+    day: 'numeric',
+  });
   return (
     <View style={styles.screenHeader}>
       <View>
@@ -264,14 +288,18 @@ export default function AccountScreen() {
       setBalance(sampleAccount.balance);
       setDeposit(sampleAccount.deposit);
       setUseSampleData(true);
-      setNotice('연결 전 화면을 미리 보고 있어요. 계좌 정보는 샘플 데이터로 보여주고 있어요.');
+      setNotice(
+        '연결 전 화면을 미리 보고 있어요. 계좌 정보는 샘플 데이터로 보여주고 있어요.',
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const handleOrder = useCallback((item, side) => {
     setSelected(item);
@@ -299,24 +327,34 @@ export default function AccountScreen() {
             <Text style={styles.noticeText}>{notice}</Text>
           </View>
         )}
-        {deposit != null && <DepositHeader deposit={deposit} balance={balance} />}
+        {deposit != null && (
+          <DepositHeader deposit={deposit} balance={balance} />
+        )}
         {balance.length > 0 && <PortfolioSummary balance={balance} />}
 
         <Text style={styles.sectionTitle}>보유잔고</Text>
         {loading ? (
           <View style={styles.listCard}>
-            {[1, 2, 3].map((i) => <SkeletonRow key={i} />)}
+            {[1, 2, 3].map((i) => (
+              <SkeletonRow key={i} />
+            ))}
           </View>
         ) : balance.length === 0 ? (
           <View style={styles.emptyBox}>
             <Text style={styles.emptyIcon}>📦</Text>
             <Text style={styles.emptyTitle}>아직 보유한 종목이 없어요</Text>
-            <Text style={styles.emptyDesc}>티커 탭에서 관심 종목을 매수하면 여기에 나타나요</Text>
+            <Text style={styles.emptyDesc}>
+              티커 탭에서 관심 종목을 매수하면 여기에 나타나요
+            </Text>
           </View>
         ) : (
           <View style={styles.listCard}>
             {balance.map((item) => (
-              <BalanceCard key={item.ticker} item={item} onOrder={handleOrder} />
+              <BalanceCard
+                key={item.ticker}
+                item={item}
+                onOrder={handleOrder}
+              />
             ))}
           </View>
         )}
@@ -339,7 +377,12 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: tdsDark.bgPrimary },
   scroll: { flex: 1 },
   content: { paddingTop: 8, paddingBottom: 32 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+  },
   screenHeader: {
     marginHorizontal: 16,
     marginTop: 4,
@@ -349,7 +392,12 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   headerEyebrow: { fontSize: 12, color: tdsDark.textTertiary, marginBottom: 2 },
-  headerTitle: { fontSize: 28, fontWeight: '800', color: tdsDark.textPrimary, letterSpacing: -0.5 },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: tdsDark.textPrimary,
+    letterSpacing: -0.5,
+  },
   headerSub: { fontSize: 13, color: tdsDark.textSecondary, marginTop: 2 },
   headerPill: {
     marginTop: 12,
@@ -384,12 +432,33 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     elevation: 4,
   },
-  depositSubLabel: { fontSize: 13, color: tdsDark.textTertiary, marginBottom: 4 },
-  depositSubRow: { flexDirection: 'row', marginTop: 16, gap: 24, alignItems: 'center' },
+  depositSubLabel: {
+    fontSize: 13,
+    color: tdsDark.textTertiary,
+    marginBottom: 4,
+  },
+  depositSubRow: {
+    flexDirection: 'row',
+    marginTop: 16,
+    gap: 24,
+    alignItems: 'center',
+  },
   depositVDivider: { width: 1, height: 28, backgroundColor: tdsDark.border },
-  depositItemLabel: { fontSize: 12, color: tdsDark.textTertiary, marginBottom: 3 },
-  depositItemValue: { fontSize: 15, fontWeight: '600', color: tdsDark.textSecondary },
-  depositAmount: { fontSize: 28, fontWeight: '700', color: tdsDark.textPrimary },
+  depositItemLabel: {
+    fontSize: 12,
+    color: tdsDark.textTertiary,
+    marginBottom: 3,
+  },
+  depositItemValue: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: tdsDark.textSecondary,
+  },
+  depositAmount: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: tdsDark.textPrimary,
+  },
 
   sectionTitle: {
     fontSize: 13,
@@ -435,7 +504,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
-  portfolioTitle: { fontSize: 14, fontWeight: '600', color: tdsDark.textPrimary },
+  portfolioTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: tdsDark.textPrimary,
+  },
   portfolioAvgRate: { fontSize: 16, fontWeight: '700' },
   portfolioChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   portfolioChip: {
@@ -453,8 +526,18 @@ const styles = StyleSheet.create({
   emptyBox: { alignItems: 'center', paddingVertical: 40 },
   emptyText: { color: tdsDark.textSecondary, fontSize: 14 },
   emptyIcon: { fontSize: 36, marginBottom: 12 },
-  emptyTitle: { fontSize: 15, fontWeight: '600', color: tdsDark.textPrimary, marginBottom: 6 },
-  emptyDesc: { fontSize: 13, color: tdsDark.textSecondary, textAlign: 'center', lineHeight: 19 },
+  emptyTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: tdsDark.textPrimary,
+    marginBottom: 6,
+  },
+  emptyDesc: {
+    fontSize: 13,
+    color: tdsDark.textSecondary,
+    textAlign: 'center',
+    lineHeight: 19,
+  },
 
   skeletonRow: {
     flexDirection: 'row',

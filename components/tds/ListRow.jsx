@@ -1,7 +1,15 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { tdsDark } from '../../constants/tdsColors';
 
-export function ListRow({ left, title, subtitle, right, onPress, border = true, style }) {
+export function ListRow({
+  left,
+  title,
+  subtitle,
+  right,
+  onPress,
+  border = true,
+  style,
+}) {
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -33,8 +41,18 @@ const styles = StyleSheet.create({
   leftSlot: { marginRight: 12 },
   rightSlot: { marginLeft: 12 },
   center: { flex: 1 },
-  title: { fontSize: 15, fontWeight: '600', color: tdsDark.textPrimary, lineHeight: 22.5 },
-  subtitle: { fontSize: 13, color: tdsDark.textSecondary, lineHeight: 19.5, marginTop: 2 },
+  title: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: tdsDark.textPrimary,
+    lineHeight: 22.5,
+  },
+  subtitle: {
+    fontSize: 13,
+    color: tdsDark.textSecondary,
+    lineHeight: 19.5,
+    marginTop: 2,
+  },
 });
 
 export default ListRow;

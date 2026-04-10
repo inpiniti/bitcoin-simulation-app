@@ -18,27 +18,30 @@ import { Button } from '../../components/tds/Button';
 import { Badge } from '../../components/tds/Badge';
 import { supabase } from '../../lib/supabaseClient';
 import { XGB_PREDICT_URL, WS_TRAIN_URL } from '../../lib/xgbApi';
-import { samplePredictionResults, sampleTrainingTimeline } from '../../lib/sampleData';
+import {
+  samplePredictionResults,
+  sampleTrainingTimeline,
+} from '../../lib/sampleData';
 
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
 
 const MARKETS = [
-  { key: 'kospi',   label: 'KOSPI' },
-  { key: 'kosdaq',  label: 'KOSDAQ' },
-  { key: 'nasdaq',  label: 'NASDAQ' },
-  { key: 'nyse',    label: 'NYSE' },
+  { key: 'kospi', label: 'KOSPI' },
+  { key: 'kosdaq', label: 'KOSDAQ' },
+  { key: 'nasdaq', label: 'NASDAQ' },
+  { key: 'nyse', label: 'NYSE' },
 ];
 
 const PERIODS = [
-  { key: 7,   label: '7일' },
-  { key: 14,  label: '14일' },
-  { key: 30,  label: '30일' },
-  { key: 60,  label: '60일' },
+  { key: 7, label: '7일' },
+  { key: 14, label: '14일' },
+  { key: 30, label: '30일' },
+  { key: 60, label: '60일' },
 ];
 
 const TABS = [
   { key: 'predict', label: '예측' },
-  { key: 'train',   label: '학습' },
+  { key: 'train', label: '학습' },
 ];
 
 function ScreenHeader() {
@@ -47,7 +50,9 @@ function ScreenHeader() {
       <View>
         <Text style={styles.headerEyebrow}>모델 · 예측 엔진</Text>
         <Text style={styles.headerTitle}>AI 모델</Text>
-        <Text style={styles.headerSub}>예측 결과와 학습 진행을 한 번에 확인해요</Text>
+        <Text style={styles.headerSub}>
+          예측 결과와 학습 진행을 한 번에 확인해요
+        </Text>
       </View>
       <View style={styles.headerPill}>
         <Text style={styles.headerPillText}>XGBoost</Text>
@@ -83,22 +88,30 @@ function ChipSelector({ options, value, onChange, disabled }) {
 // ─── 신호 배지 ────────────────────────────────────────────────────────────────
 
 function SignalBadge({ signal }) {
-  const map = { BUY: 'red', SELL: 'green', HOLD: 'orange' };
+  const map = { BUY: 'red', SELL: 'blue', HOLD: 'grey' };
   return (
-    <Badge color={map[signal] ?? 'orange'} size="small" variant="weak">
+    <Badge color={map[signal] ?? 'grey'} size="small" variant="weak">
       {signal}
     </Badge>
   );
 }
 
 // ─── 예측 행 ────────────────────────────────────────────────────────────────────────
-const BADGE_COLORS = ['#3182f6', '#f04452', '#03b26c', '#fe9800', '#8b5cf6', '#06b6d4'];
+const BADGE_COLORS = [
+  '#3182f6',
+  '#f04452',
+  '#03b26c',
+  '#fe9800',
+  '#8b5cf6',
+  '#06b6d4',
+];
 
 function PredictRow({ r }) {
   const displayName = r.name || r.ticker;
   const letter = displayName[0]?.toUpperCase() || '?';
   const bg = BADGE_COLORS[displayName.charCodeAt(0) % BADGE_COLORS.length];
-  const buyPct = r.buy_probability != null ? Math.round(r.buy_probability * 100) : 50;
+  const buyPct =
+    r.buy_probability != null ? Math.round(r.buy_probability * 100) : 50;
   const sellPct = 100 - buyPct;
   return (
     <View style={styles.predictRow}>
@@ -135,7 +148,9 @@ function PredictTab() {
   // 시장 변경 시 샘플 결과 동기화
   useEffect(() => {
     if (!loading) {
-      setResults(samplePredictionResults[market] ?? samplePredictionResults.kospi);
+      setResults(
+        samplePredictionResults[market] ?? samplePredictionResults.kospi,
+      );
     }
   }, [market]);
 
@@ -153,7 +168,8 @@ function PredictTab() {
         .limit(1);
 
       const modelId = models?.[0]?.id;
-      if (!modelId) throw new Error('학습된 모델이 없습니다. 먼저 학습을 실행하세요.');
+      if (!modelId)
+        throw new Error('학습된 모델이 없습니다. 먼저 학습을 실행하세요.');
 
       // Supabase ticker_group에서 종목 목록 (최대 10개)
       const { data: tickerRows } = await supabase
@@ -162,7 +178,10 @@ function PredictTab() {
         .limit(10);
 
       const tickers = tickerRows || [];
-      if (tickers.length === 0) throw new Error('티커 목록이 없습니다. Supabase ticker_group 테이블을 확인하세요.');
+      if (tickers.length === 0)
+        throw new Error(
+          '티커 목록이 없습니다. Supabase ticker_group 테이블을 확인하세요.',
+        );
 
       // 순차 예측
       const predictions = [];
@@ -186,7 +205,9 @@ function PredictTab() {
       setResults(predictions);
       setNotice('실시간 예측 결과를 불러왔어요.');
     } catch (e) {
-      setResults(samplePredictionResults[market] ?? samplePredictionResults.kospi);
+      setResults(
+        samplePredictionResults[market] ?? samplePredictionResults.kospi,
+      );
       setNotice('예측 연결 전이라서 샘플 결과로 먼저 보여주고 있어요.');
     } finally {
       setLoading(false);
@@ -201,10 +222,20 @@ function PredictTab() {
         </View>
       )}
       <Text style={styles.fieldLabel}>시장</Text>
-      <ChipSelector options={MARKETS} value={market} onChange={setMarket} disabled={loading} />
+      <ChipSelector
+        options={MARKETS}
+        value={market}
+        onChange={setMarket}
+        disabled={loading}
+      />
 
       <Text style={[styles.fieldLabel, { marginTop: 16 }]}>기간</Text>
-      <ChipSelector options={PERIODS} value={period} onChange={setPeriod} disabled={loading} />
+      <ChipSelector
+        options={PERIODS}
+        value={period}
+        onChange={setPeriod}
+        disabled={loading}
+      />
 
       <Button
         onPress={handlePredict}
@@ -218,7 +249,9 @@ function PredictTab() {
       {results.length > 0 && (
         <View style={styles.resultCard}>
           <Text style={styles.resultLabel}>예측 결과</Text>
-          {results.map((r) => <PredictRow key={r.ticker} r={r} />)}
+          {results.map((r) => (
+            <PredictRow key={r.ticker} r={r} />
+          ))}
         </View>
       )}
     </ScrollView>
@@ -235,7 +268,9 @@ function TrainTab() {
   const [trainProgress, setTrainProgress] = useState(0);
   const [logs, setLogs] = useState([]);
   const [done, setDone] = useState(false);
-  const [notice, setNotice] = useState('학습 흐름도 샘플 로그로 먼저 볼 수 있어요.');
+  const [notice, setNotice] = useState(
+    '학습 흐름도 샘플 로그로 먼저 볼 수 있어요.',
+  );
   const wsRef = useRef(null);
   const timerRef = useRef(null);
 
@@ -284,11 +319,13 @@ function TrainTab() {
       wsRef.current = ws;
 
       ws.onopen = () => {
-        ws.send(JSON.stringify({
-          group: market,
-          period: period * 30,
-          modelName: `XGB_${market}_${period}d`,
-        }));
+        ws.send(
+          JSON.stringify({
+            group: market,
+            period: period * 30,
+            modelName: `XGB_${market}_${period}d`,
+          }),
+        );
         setLogs(['서버 연결됨. 학습을 시작하고 있어요.']);
       };
 
@@ -347,10 +384,20 @@ function TrainTab() {
         </View>
       )}
       <Text style={styles.fieldLabel}>시장</Text>
-      <ChipSelector options={MARKETS} value={market} onChange={setMarket} disabled={isTraining} />
+      <ChipSelector
+        options={MARKETS}
+        value={market}
+        onChange={setMarket}
+        disabled={isTraining}
+      />
 
       <Text style={[styles.fieldLabel, { marginTop: 16 }]}>기간</Text>
-      <ChipSelector options={PERIODS} value={period} onChange={setPeriod} disabled={isTraining} />
+      <ChipSelector
+        options={PERIODS}
+        value={period}
+        onChange={setPeriod}
+        disabled={isTraining}
+      />
 
       <Button
         onPress={startTrain}
@@ -366,14 +413,24 @@ function TrainTab() {
           <View style={styles.progressRow}>
             <Text style={styles.progressLabel}>수집</Text>
             <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${collectProgress}%` }]} />
+              <View
+                style={[styles.progressFill, { width: `${collectProgress}%` }]}
+              />
             </View>
             <Text style={styles.progressPct}>{collectProgress}%</Text>
           </View>
           <View style={[styles.progressRow, { marginTop: 10 }]}>
             <Text style={styles.progressLabel}>학습</Text>
             <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${trainProgress}%`, backgroundColor: tdsColors.green400 }]} />
+              <View
+                style={[
+                  styles.progressFill,
+                  {
+                    width: `${trainProgress}%`,
+                    backgroundColor: tdsColors.green400,
+                  },
+                ]}
+              />
             </View>
             <Text style={styles.progressPct}>{trainProgress}%</Text>
           </View>
@@ -381,7 +438,9 @@ function TrainTab() {
           {logs.length > 0 && (
             <View style={styles.logsBox}>
               {logs.slice(-30).map((line, i) => (
-                <Text key={i} style={styles.logLine}>{line}</Text>
+                <Text key={i} style={styles.logLine}>
+                  {line}
+                </Text>
               ))}
             </View>
           )}
@@ -422,7 +481,12 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   headerEyebrow: { fontSize: 12, color: tdsDark.textTertiary, marginBottom: 2 },
-  headerTitle: { fontSize: 28, fontWeight: '800', color: tdsDark.textPrimary, letterSpacing: -0.5 },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: tdsDark.textPrimary,
+    letterSpacing: -0.5,
+  },
   headerSub: { fontSize: 13, color: tdsDark.textSecondary, marginTop: 2 },
   headerPill: {
     marginTop: 12,
@@ -505,7 +569,7 @@ const styles = StyleSheet.create({
   predictCode: { fontSize: 11, color: tdsDark.textTertiary },
   probTrack: {
     height: 5,
-    backgroundColor: `${tdsColors.green400}33`,
+    backgroundColor: tdsColors.grey200,
     borderRadius: 3,
     overflow: 'hidden',
   },
@@ -516,7 +580,7 @@ const styles = StyleSheet.create({
   },
   probLabels: { flexDirection: 'row', justifyContent: 'space-between' },
   probBuyLabel: { fontSize: 11, color: tdsColors.red500, fontWeight: '600' },
-  probSellLabel: { fontSize: 11, color: tdsColors.green500, fontWeight: '600' },
+  probSellLabel: { fontSize: 11, color: tdsColors.blue500, fontWeight: '600' },
 
   // 학습 진행률
   progressRow: { flexDirection: 'row', alignItems: 'center' },
@@ -533,7 +597,12 @@ const styles = StyleSheet.create({
     backgroundColor: tdsColors.blue500,
     borderRadius: 3,
   },
-  progressPct: { width: 38, textAlign: 'right', fontSize: 12, color: tdsDark.textSecondary },
+  progressPct: {
+    width: 38,
+    textAlign: 'right',
+    fontSize: 12,
+    color: tdsDark.textSecondary,
+  },
 
   logsBox: {
     marginTop: 16,
@@ -542,5 +611,10 @@ const styles = StyleSheet.create({
     padding: 10,
     maxHeight: 200,
   },
-  logLine: { fontSize: 11, color: tdsDark.textSecondary, fontFamily: 'monospace', marginBottom: 2 },
+  logLine: {
+    fontSize: 11,
+    color: tdsDark.textSecondary,
+    fontFamily: 'monospace',
+    marginBottom: 2,
+  },
 });

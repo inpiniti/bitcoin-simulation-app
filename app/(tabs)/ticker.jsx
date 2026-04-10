@@ -41,7 +41,14 @@ function SkeletonRow() {
 
 // ─── 이니셜 뱃지 ──────────────────────────────────────────────────────────────
 
-const BADGE_COLORS = ['#3182f6', '#f04452', '#03b26c', '#fe9800', '#8b5cf6', '#06b6d4'];
+const BADGE_COLORS = [
+  '#3182f6',
+  '#f04452',
+  '#03b26c',
+  '#fe9800',
+  '#8b5cf6',
+  '#06b6d4',
+];
 
 function InitialBadge({ name, ticker }) {
   const display = name || ticker || '?';
@@ -59,14 +66,17 @@ function TickerStatsBar({ tickers }) {
   if (!tickers || tickers.length === 0) return null;
   const ups = tickers.filter((t) => t.today_rate > 0).length;
   const downs = tickers.filter((t) => t.today_rate < 0).length;
-  const avgRate = tickers.reduce((s, t) => s + t.today_rate, 0) / tickers.length;
+  const avgRate =
+    tickers.reduce((s, t) => s + t.today_rate, 0) / tickers.length;
   return (
     <View style={styles.statsBar}>
       <Text style={[styles.statsChip, { color: '#f04452' }]}>↑ {ups}</Text>
       <Text style={styles.statsSep}>·</Text>
-      <Text style={[styles.statsChip, { color: '#03b26c' }]}>↓ {downs}</Text>
+      <Text style={[styles.statsChip, { color: tdsColors.blue500 }]}>↓ {downs}</Text>
       <Text style={styles.statsSep}>·</Text>
-      <Text style={[styles.statsChip, { color: getPriceColor(avgRate) }]}>평균 {formatRate(avgRate)}</Text>
+      <Text style={[styles.statsChip, { color: getPriceColor(avgRate) }]}>
+        평균 {formatRate(avgRate)}
+      </Text>
     </View>
   );
 }
@@ -83,7 +93,7 @@ function MarketIndexStrip({ indices }) {
     >
       {indices.map((idx) => {
         const isUp = idx.change >= 0;
-        const color = isUp ? '#f04452' : '#03b26c';
+        const color = isUp ? '#f04452' : tdsColors.blue500;
         return (
           <View key={idx.key} style={styles.indexCard}>
             <Text style={styles.indexLabel}>{idx.label}</Text>
@@ -91,7 +101,8 @@ function MarketIndexStrip({ indices }) {
               {idx.value.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}
             </Text>
             <Text style={[styles.indexChange, { color }]}>
-              {isUp ? '+' : ''}{idx.change.toFixed(1)}%
+              {isUp ? '+' : ''}
+              {idx.change.toFixed(1)}%
             </Text>
           </View>
         );
@@ -102,11 +113,13 @@ function MarketIndexStrip({ indices }) {
 
 // ─── 매수 BottomSheet ─────────────────────────────────────────────────────────
 
-function BuySheet({ item, open, onClose, useSampleData }) {
+// ─── 종목 상세 BottomSheet ────────────────────────────────────────────────────
+
+function TickerDetailSheet({ item, open, onClose, useSampleData }) {
   const [qty, setQty] = useState('1');
   const [loading, setLoading] = useState(false);
 
-  const handleBuy = useCallback(async () => {
+  const handleOrder = useCallback(async (side) => {
     const quantity = parseInt(qty, 10);
     if (!quantity || quantity <= 0) {
       Alert.alert('오류', '올바른 수량을 입력하세요.');
@@ -115,13 +128,14 @@ function BuySheet({ item, open, onClose, useSampleData }) {
     setLoading(true);
     try {
       if (!useSampleData) {
-        await submitKisOrder({ ticker: item.ticker, quantity, side: 'buy' });
+        await submitKisOrder({ ticker: item.ticker, quantity, side });
       }
+      const label = side === 'buy' ? '매수' : '매도';
       Alert.alert(
         '주문 확인',
         useSampleData
-          ? `${item.name} ${quantity}주 매수 흐름을 샘플로 보여주고 있어요.`
-          : `${item.name} ${quantity}주 매수 주문이 완료되었습니다.`
+          ? `${item.name} ${quantity}주 ${label} 흐름을 샘플로 보여주고 있어요.`
+          : `${item.name} ${quantity}주 ${label} 주문이 완료되었습니다.`,
       );
       onClose();
     } catch (e) {
@@ -132,26 +146,43 @@ function BuySheet({ item, open, onClose, useSampleData }) {
   }, [item, qty, onClose]);
 
   if (!item) return null;
+  const rateColor = getPriceColor(item.today_rate);
 
   return (
     <BottomSheet
       open={open}
       onClose={onClose}
-      title={`${item.name} 매수`}
+      title={item.name}
       cta={
-        <Button
-          onPress={handleBuy}
-          display="full"
-          loading={loading}
-          color="primary"
-        >
-          매수하기
-        </Button>
+        <View style={styles.detailCta}>
+          <Button
+            onPress={() => handleOrder('sell')}
+            color="danger"
+            variant="weak"
+            style={styles.detailCtaBtn}
+            loading={loading}
+          >
+            매도
+          </Button>
+          <Button
+            onPress={() => handleOrder('buy')}
+            color="primary"
+            style={styles.detailCtaBtn}
+            loading={loading}
+          >
+            매수
+          </Button>
+        </View>
       }
     >
-      <Text style={styles.sheetLabel}>현재가</Text>
-      <Text style={styles.sheetPrice}>{formatPrice(item.current_price)}</Text>
-      <Text style={[styles.sheetLabel, { marginTop: 16 }]}>수량</Text>
+      <View style={styles.detailMeta}>
+        <Text style={styles.detailCode}>{item.ticker}</Text>
+        <Text style={[styles.detailRate, { color: rateColor }]}>
+          {formatRate(item.today_rate)}
+        </Text>
+      </View>
+      <Text style={styles.detailPrice}>{formatPrice(item.current_price)}</Text>
+      <Text style={[styles.sheetLabel, { marginTop: 20, marginBottom: 6 }]}>수량</Text>
       <TextInput
         style={styles.qtyInput}
         value={qty}
@@ -166,11 +197,12 @@ function BuySheet({ item, open, onClose, useSampleData }) {
 
 // ─── 티커 행 ──────────────────────────────────────────────────────────────────
 
-function TickerRow({ item, onBuy }) {
+function TickerRow({ item, onPress }) {
   const rateColor = getPriceColor(item.today_rate);
 
   return (
     <ListRow
+      onPress={() => onPress(item)}
       left={<InitialBadge name={item.name} ticker={item.ticker} />}
       title={item.name}
       subtitle={item.ticker}
@@ -179,16 +211,9 @@ function TickerRow({ item, onBuy }) {
           <Text style={[styles.rateText, { color: rateColor }]}>
             {formatRate(item.today_rate)}
           </Text>
-          <Text style={styles.priceText}>{formatPrice(item.current_price)}</Text>
-          <Button
-            onPress={() => onBuy(item)}
-            size="small"
-            variant="weak"
-            color="primary"
-            style={{ marginTop: 6 }}
-          >
-            매수
-          </Button>
+          <Text style={styles.priceText}>
+            {formatPrice(item.current_price)}
+          </Text>
         </View>
       }
     />
@@ -196,7 +221,10 @@ function TickerRow({ item, onBuy }) {
 }
 
 function ScreenHeader() {
-  const now = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+  const now = new Date().toLocaleTimeString('ko-KR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
   return (
     <View style={styles.screenHeader}>
       <View>
@@ -237,15 +265,19 @@ export default function TickerScreen() {
     } catch (e) {
       setTickers(sampleTickers);
       setUseSampleData(true);
-      setNotice('티커 목록을 연결하기 전이라서 샘플 데이터를 먼저 보여주고 있어요.');
+      setNotice(
+        '티커 목록을 연결하기 전이라서 샘플 데이터를 먼저 보여주고 있어요.',
+      );
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { loadTickers(); }, [loadTickers]);
+  useEffect(() => {
+    loadTickers();
+  }, [loadTickers]);
 
-  const handleBuy = useCallback((item) => {
+  const handleSelect = useCallback((item) => {
     setSelected(item);
     setSheetOpen(true);
   }, []);
@@ -269,20 +301,22 @@ export default function TickerScreen() {
           <View style={styles.emptyBox}>
             <Text style={styles.emptyIcon}>📈</Text>
             <Text style={styles.emptyTitle}>관심 종목이 없어요</Text>
-            <Text style={styles.emptyDesc}>다양한 시장의 종목을 곧 만나실 수 있어요</Text>
+            <Text style={styles.emptyDesc}>
+              다양한 시장의 종목을 곧 만나실 수 있어요
+            </Text>
           </View>
         ) : (
           <View style={styles.listCard}>
             {loading
               ? [1, 2, 3, 4, 5].map((i) => <SkeletonRow key={i} />)
               : tickers.map((item) => (
-                  <TickerRow key={item.ticker} item={item} onBuy={handleBuy} />
+                  <TickerRow key={item.ticker} item={item} onPress={handleSelect} />
                 ))}
           </View>
         )}
       </ScrollView>
 
-      <BuySheet
+      <TickerDetailSheet
         item={selected}
         open={sheetOpen}
         useSampleData={useSampleData}
@@ -298,7 +332,12 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: tdsDark.bgPrimary },
   scroll: { flex: 1 },
   content: { paddingTop: 8, paddingBottom: 32 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+  },
   screenHeader: {
     marginHorizontal: 16,
     marginBottom: 8,
@@ -307,7 +346,12 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   headerEyebrow: { fontSize: 12, color: tdsDark.textTertiary, marginBottom: 2 },
-  headerTitle: { fontSize: 28, fontWeight: '800', color: tdsDark.textPrimary, letterSpacing: -0.5 },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: tdsDark.textPrimary,
+    letterSpacing: -0.5,
+  },
   headerSub: { fontSize: 13, color: tdsDark.textSecondary, marginTop: 2 },
   headerPill: {
     marginTop: 12,
@@ -336,10 +380,24 @@ const styles = StyleSheet.create({
   rateText: { fontSize: 14, fontWeight: '600' },
   priceText: { fontSize: 13, color: tdsDark.textSecondary, marginTop: 2 },
   emptyText: { color: tdsDark.textSecondary, fontSize: 14 },
-    emptyBox: { alignItems: 'center', paddingVertical: 48, paddingHorizontal: 32 },
-    emptyIcon: { fontSize: 36, marginBottom: 12 },
-    emptyTitle: { fontSize: 15, fontWeight: '600', color: tdsDark.textPrimary, marginBottom: 6 },
-    emptyDesc: { fontSize: 13, color: tdsDark.textSecondary, textAlign: 'center', lineHeight: 19 },
+  emptyBox: {
+    alignItems: 'center',
+    paddingVertical: 48,
+    paddingHorizontal: 32,
+  },
+  emptyIcon: { fontSize: 36, marginBottom: 12 },
+  emptyTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: tdsDark.textPrimary,
+    marginBottom: 6,
+  },
+  emptyDesc: {
+    fontSize: 13,
+    color: tdsDark.textSecondary,
+    textAlign: 'center',
+    lineHeight: 19,
+  },
   skeletonRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -371,7 +429,12 @@ const styles = StyleSheet.create({
   },
   initialText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   indexStrip: { flexGrow: 0, marginBottom: 4 },
-  indexStripContent: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4, gap: 10 },
+  indexStripContent: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 4,
+    gap: 10,
+  },
   indexCard: {
     backgroundColor: tdsDark.bgCard,
     borderRadius: 14,
@@ -385,8 +448,19 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   indexLabel: { fontSize: 11, color: tdsDark.textTertiary, marginBottom: 2 },
-  indexValue: { fontSize: 14, fontWeight: '600', color: tdsDark.textPrimary, marginBottom: 2 },
+  indexValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: tdsDark.textPrimary,
+    marginBottom: 2,
+  },
   indexChange: { fontSize: 12, fontWeight: '600' },
+    detailMeta: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 },
+    detailCode: { fontSize: 13, color: tdsDark.textTertiary },
+    detailRate: { fontSize: 13, fontWeight: '600' },
+    detailPrice: { fontSize: 28, fontWeight: '700', color: tdsDark.textPrimary, letterSpacing: -0.5 },
+    detailCta: { flexDirection: 'row', gap: 10, paddingHorizontal: 16 },
+    detailCtaBtn: { flex: 1 },
   statsBar: {
     flexDirection: 'row',
     alignItems: 'center',
