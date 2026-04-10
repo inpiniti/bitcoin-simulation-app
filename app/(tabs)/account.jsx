@@ -93,17 +93,7 @@ function PortfolioSummary({ balance, summary }) {
   const rateColor = getPriceColor(avgRate);
   const profitAmount =
     summary?.profitAmount ??
-    (() => {
-      const totalBuy = balance.reduce(
-        (sum, b) => sum + (b.buy_amount_foreign || 0),
-        0,
-      );
-      const totalEval = balance.reduce(
-        (sum, b) => sum + (b.eval_amount_foreign || 0),
-        0,
-      );
-      return totalEval - totalBuy;
-    })();
+    balance.reduce((sum, b) => sum + (b.profit_amount || 0), 0);
   const profitColor = getPriceColor(profitAmount);
 
   return (
@@ -272,7 +262,7 @@ function DepositHeader({ deposit, totalAsset }) {
       <Text style={styles.depositAmount}>{formatPrice(totalAsset)}</Text>
       <View style={styles.depositSubRow}>
         <View>
-          <Text style={styles.depositItemLabel}>예수금</Text>
+          <Text style={styles.depositItemLabel}>총예수금</Text>
           <Text style={styles.depositItemValue}>{formatPrice(deposit)}</Text>
         </View>
       </View>
@@ -284,7 +274,9 @@ function HoldingsHeader({ count, evalAmount }) {
   return (
     <View style={styles.holdingsHeader}>
       <Text style={styles.sectionTitle}>보유잔고 · {count}개</Text>
-      <Text style={styles.holdingsEvalText}>평가금액 {formatPrice(evalAmount)}</Text>
+      <Text style={styles.holdingsEvalText}>
+        평가금액 {formatPrice(evalAmount)}
+      </Text>
     </View>
   );
 }
@@ -324,11 +316,12 @@ export default function AccountScreen() {
   const [notice, setNotice] = useState(null);
 
   const fallbackEvalAmount = balance.reduce(
-    (sum, b) => sum + (b.current_price || b.avg_price || 0) * (b.qty || 0),
+    (sum, b) => sum + (b.eval_amount || 0),
     0,
   );
   const evalAmount = summary?.evalAmount ?? fallbackEvalAmount;
-  const totalAsset = summary?.totalAsset ?? (deposit ?? 0) + evalAmount;
+  const depositAmount = summary?.depositAmount ?? (deposit ?? 0);
+  const totalAsset = summary?.totalAsset ?? depositAmount + evalAmount;
 
   const load = useCallback(
     async (isRefresh = false) => {
@@ -398,7 +391,7 @@ export default function AccountScreen() {
           </View>
         )}
         {deposit != null && (
-          <DepositHeader deposit={deposit} totalAsset={totalAsset} />
+          <DepositHeader deposit={depositAmount} totalAsset={totalAsset} />
         )}
         {balance.length > 0 && (
           <PortfolioSummary balance={balance} summary={summary} />
