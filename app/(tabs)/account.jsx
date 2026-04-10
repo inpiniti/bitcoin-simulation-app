@@ -109,26 +109,7 @@ function PortfolioSummary({ balance, summary }) {
           </Text>
         </View>
       </View>
-      {summary && (
-        <View style={styles.metricGrid}>
-          <View style={styles.metricItem}>
-            <Text style={styles.metricLabel}>평가금액</Text>
-            <Text style={styles.metricValue}>{formatPrice(summary.evalAmount)}</Text>
-          </View>
-          <View style={styles.metricItem}>
-            <Text style={styles.metricLabel}>매입금액</Text>
-            <Text style={styles.metricValue}>{formatPrice(summary.buyAmount)}</Text>
-          </View>
-          <View style={styles.metricItem}>
-            <Text style={styles.metricLabel}>총자산</Text>
-            <Text style={styles.metricValue}>{formatPrice(summary.totalAsset)}</Text>
-          </View>
-          <View style={styles.metricItem}>
-            <Text style={styles.metricLabel}>총예수금</Text>
-            <Text style={styles.metricValue}>{formatPrice(summary.depositAmount)}</Text>
-          </View>
-        </View>
-      )}
+
       <View style={styles.portfolioChips}>
         {balance.map((b) => (
           <View key={b.ticker} style={styles.portfolioChip}>
@@ -605,26 +586,7 @@ const styles = StyleSheet.create({
   portfolioAvgRate: { fontSize: 16, fontWeight: '700' },
   portfolioMetaRight: { alignItems: 'flex-end', gap: 4 },
   portfolioProfit: { fontSize: 13, fontWeight: '600' },
-  metricGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    rowGap: 12,
-    columnGap: 16,
-    marginBottom: 14,
-  },
-  metricItem: {
-    width: '47%',
-  },
-  metricLabel: {
-    fontSize: 12,
-    color: tdsDark.textTertiary,
-    marginBottom: 4,
-  },
-  metricValue: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: tdsDark.textPrimary,
-  },
+
   portfolioChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   portfolioChip: {
     flexDirection: 'row',

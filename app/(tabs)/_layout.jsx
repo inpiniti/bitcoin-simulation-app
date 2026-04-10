@@ -64,6 +64,19 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="predict"
+        options={{
+          title: '예측',
+          tabBarIcon: ({ focused, size }) => (
+            <Ionicons
+              name="analytics"
+              color={focused ? tdsColors.blue700 : tdsColors.grey400}
+              size={size}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="schedule"
         options={{
           title: '예약',
