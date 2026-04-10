@@ -1,5 +1,5 @@
 import { Redirect } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Keyboard,
   KeyboardAvoidingView,
@@ -11,10 +11,13 @@ import {
   TouchableWithoutFeedback,
   View,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Button } from '../components/tds/Button';
 import { tdsColors, tdsDark } from '../constants/tdsColors';
 import { clearKisAuth, loginKis } from '../lib/kisApi';
 import useStore from '../store/useStore';
+
+const KIS_CREDENTIALS_KEY = 'kis.credentials.v1';
 
 export default function LoginScreen() {
   const { authMode, startGuestSession, startLoginSession } = useStore();
@@ -23,6 +26,29 @@ export default function LoginScreen() {
   const [appsecret, setAppsecret] = useState('');
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadSavedCredentials = async () => {
+      try {
+        const savedRaw = await AsyncStorage.getItem(KIS_CREDENTIALS_KEY);
+        if (!savedRaw || !mounted) return;
+
+        const saved = JSON.parse(savedRaw);
+        setAccountNo(saved?.accountNo || '');
+        setAppkey(saved?.appkey || '');
+        setAppsecret(saved?.appsecret || '');
+      } catch (_e) {
+        // 저장 데이터가 깨졌으면 무시하고 수동 입력으로 진행합니다.
+      }
+    };
+
+    loadSavedCredentials();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   if (authMode === 'guest' || authMode === 'logged-in') {
     return <Redirect href="/(tabs)/account" />;
@@ -46,6 +72,16 @@ export default function LoginScreen() {
         appkey: appkey.trim(),
         appsecret: appsecret.trim(),
       });
+
+      await AsyncStorage.setItem(
+        KIS_CREDENTIALS_KEY,
+        JSON.stringify({
+          accountNo: accountNo.trim(),
+          appkey: appkey.trim(),
+          appsecret: appsecret.trim(),
+        }),
+      );
+
       startLoginSession({ accountNo: accountNo.trim() });
     } catch (e) {
       setError(e.message || '로그인에 실패했어요.');
@@ -71,7 +107,7 @@ export default function LoginScreen() {
                 value={accountNo}
                 onChangeText={setAccountNo}
                 autoCapitalize="none"
-                placeholder="계좌번호 입력"
+                placeholder="계좌번호 입력 (12345678-01 또는 1234567801)"
                 placeholderTextColor={tdsDark.textTertiary}
                 returnKeyType="next"
               />
