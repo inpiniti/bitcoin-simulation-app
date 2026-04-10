@@ -21,6 +21,24 @@ import { fetchKisBalance, submitKisOrder } from '../../lib/kisApi';
 import { sampleAccount } from '../../lib/sampleData';
 import { getPriceColor, formatRate, formatPrice } from '../../utils/price';
 
+// ─── 스켈레튼 행 ────────────────────────────────────────────────────────────
+
+function SkeletonRow() {
+  return (
+    <View style={styles.skeletonRow}>
+      <View style={styles.skeletonAvatar} />
+      <View style={styles.skeletonBody}>
+        <View style={[styles.skeletonLine, { width: '55%' }]} />
+        <View style={[styles.skeletonLine, { width: '35%', marginTop: 8 }]} />
+      </View>
+      <View style={styles.skeletonRight}>
+        <View style={[styles.skeletonLine, { width: 56 }]} />
+        <View style={[styles.skeletonLine, { width: 48, marginTop: 8 }]} />
+      </View>
+    </View>
+  );
+}
+
 // ─── 이니셜 뱃지 ──────────────────────────────────────────────────────────────
 
 const BADGE_COLORS = ['#3182f6', '#f04452', '#03b26c', '#fe9800', '#8b5cf6', '#06b6d4'];
@@ -233,12 +251,6 @@ export default function AccountScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      {loading && !refreshing && (
-        <View style={styles.center}>
-          <ActivityIndicator color={tdsColors.blue500} size="large" />
-        </View>
-      )}
-
       {!loading && (
         <ScrollView
           style={styles.scroll}
@@ -261,9 +273,15 @@ export default function AccountScreen() {
           {balance.length > 0 && <PortfolioSummary balance={balance} />}
 
           <Text style={styles.sectionTitle}>보유잔고</Text>
-          {balance.length === 0 ? (
+          {loading ? (
+            <View style={styles.listCard}>
+              {[1, 2, 3].map((i) => <SkeletonRow key={i} />)}
+            </View>
+          ) : balance.length === 0 ? (
             <View style={styles.emptyBox}>
-              <Text style={styles.emptyText}>보유 종목이 없습니다</Text>
+              <Text style={styles.emptyIcon}>📦</Text>
+              <Text style={styles.emptyTitle}>아직 보유한 종목이 없어요</Text>
+              <Text style={styles.emptyDesc}>티커 탭에서 관심 종목을 매수하면 여기에 나타나요</Text>
             </View>
           ) : (
             <View style={styles.listCard}>
@@ -387,6 +405,32 @@ const styles = StyleSheet.create({
 
   emptyBox: { alignItems: 'center', paddingVertical: 40 },
   emptyText: { color: tdsDark.textSecondary, fontSize: 14 },
+  emptyIcon: { fontSize: 36, marginBottom: 12 },
+  emptyTitle: { fontSize: 15, fontWeight: '600', color: tdsDark.textPrimary, marginBottom: 6 },
+  emptyDesc: { fontSize: 13, color: tdsDark.textSecondary, textAlign: 'center', lineHeight: 19 },
+
+  skeletonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: tdsDark.border,
+  },
+  skeletonAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#e8ecef',
+    marginRight: 12,
+  },
+  skeletonBody: { flex: 1 },
+  skeletonRight: { alignItems: 'flex-end' },
+  skeletonLine: {
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#e8ecef',
+  },
 
   orderRow: {
     flexDirection: 'row',

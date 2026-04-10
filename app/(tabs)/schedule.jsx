@@ -306,7 +306,13 @@ function LogsTab() {
   }
 
   if (logs.length === 0) {
-    return <View style={styles.center}><Text style={styles.emptyText}>로그가 없습니다</Text></View>;
+    return (
+      <View style={styles.center}>
+        <Text style={styles.emptyIcon}>📝</Text>
+        <Text style={styles.emptyTitle}>아직 실행된 로그가 없어요</Text>
+        <Text style={styles.emptyDesc}>자동매매를 활성화하면 실행 기록이 여기에 쌓여요</Text>
+      </View>
+    );
   }
 
   return (
@@ -383,9 +389,9 @@ const styles = StyleSheet.create({
   fieldLabel: { fontSize: 13, color: tdsDark.textSecondary, marginBottom: 8 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: tdsDark.border,
     backgroundColor: tdsDark.bgCard,
@@ -439,6 +445,9 @@ const styles = StyleSheet.create({
   logMsg: { fontSize: 11, color: tdsDark.textTertiary, maxWidth: 180 },
 
   emptyText: { color: tdsDark.textSecondary, fontSize: 14 },
+  emptyIcon: { fontSize: 36, marginBottom: 12 },
+  emptyTitle: { fontSize: 15, fontWeight: '600', color: tdsDark.textPrimary, marginBottom: 6 },
+  emptyDesc: { fontSize: 13, color: tdsDark.textSecondary, textAlign: 'center', lineHeight: 19 },
 
   activeCard: {
     backgroundColor: tdsDark.bgCard,

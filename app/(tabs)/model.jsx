@@ -400,7 +400,7 @@ const styles = StyleSheet.create({
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingVertical: 11,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: tdsDark.border,

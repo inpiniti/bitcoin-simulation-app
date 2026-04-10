@@ -22,6 +22,24 @@ import { submitKisOrder } from '../../lib/kisApi';
 import { sampleTickers, sampleMarketIndices } from '../../lib/sampleData';
 import { getPriceColor, formatRate, formatPrice } from '../../utils/price';
 
+// ─── 스켈레튼 행 ────────────────────────────────────────────────────────────
+
+function SkeletonRow() {
+  return (
+    <View style={styles.skeletonRow}>
+      <View style={styles.skeletonAvatar} />
+      <View style={styles.skeletonBody}>
+        <View style={[styles.skeletonLine, { width: '50%' }]} />
+        <View style={[styles.skeletonLine, { width: '30%', marginTop: 8 }]} />
+      </View>
+      <View style={styles.skeletonRight}>
+        <View style={[styles.skeletonLine, { width: 52 }]} />
+        <View style={[styles.skeletonLine, { width: 40, marginTop: 8 }]} />
+      </View>
+    </View>
+  );
+}
+
 // ─── 이니셜 뱃지 ──────────────────────────────────────────────────────────────
 
 const BADGE_COLORS = ['#3182f6', '#f04452', '#03b26c', '#fe9800', '#8b5cf6', '#06b6d4'];
@@ -202,12 +220,6 @@ export default function TickerScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      {loading && (
-        <View style={styles.center}>
-          <ActivityIndicator color={tdsColors.blue500} size="large" />
-        </View>
-      )}
-
       {!loading && (
         <ScrollView
           style={styles.scroll}
@@ -221,14 +233,18 @@ export default function TickerScreen() {
           )}
           <MarketIndexStrip indices={sampleMarketIndices} />
           {tickers.length === 0 ? (
-            <View style={styles.center}>
-              <Text style={styles.emptyText}>등록된 종목이 없습니다</Text>
+            <View style={styles.emptyBox}>
+              <Text style={styles.emptyIcon}>📈</Text>
+              <Text style={styles.emptyTitle}>관심 종목이 없어요</Text>
+              <Text style={styles.emptyDesc}>다양한 시장의 종목을 곧 만나실 수 있어요</Text>
             </View>
           ) : (
             <View style={styles.listCard}>
-              {tickers.map((item) => (
-                <TickerRow key={item.ticker} item={item} onBuy={handleBuy} />
-              ))}
+              {loading
+                ? [1, 2, 3, 4, 5].map((i) => <SkeletonRow key={i} />)
+                : tickers.map((item) => (
+                    <TickerRow key={item.ticker} item={item} onBuy={handleBuy} />
+                  ))}
             </View>
           )}
         </ScrollView>
@@ -275,6 +291,32 @@ const styles = StyleSheet.create({
   rateText: { fontSize: 14, fontWeight: '600' },
   priceText: { fontSize: 13, color: tdsDark.textSecondary, marginTop: 2 },
   emptyText: { color: tdsDark.textSecondary, fontSize: 14 },
+    emptyBox: { alignItems: 'center', paddingVertical: 48, paddingHorizontal: 32 },
+    emptyIcon: { fontSize: 36, marginBottom: 12 },
+    emptyTitle: { fontSize: 15, fontWeight: '600', color: tdsDark.textPrimary, marginBottom: 6 },
+    emptyDesc: { fontSize: 13, color: tdsDark.textSecondary, textAlign: 'center', lineHeight: 19 },
+  skeletonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: tdsDark.border,
+  },
+  skeletonAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#e8ecef',
+    marginRight: 12,
+  },
+  skeletonBody: { flex: 1 },
+  skeletonRight: { alignItems: 'flex-end' },
+  skeletonLine: {
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#e8ecef',
+  },
   initialBadge: {
     width: 40,
     height: 40,
