@@ -96,11 +96,11 @@ function PortfolioSummary({ balance }) {
 
 // ─── 주문 BottomSheet ─────────────────────────────────────────────────────────
 
-function OrderSheet({ item, side, open, onClose, useSampleData }) {
+function OrderSheet({ item, open, onClose, useSampleData }) {
   const [qty, setQty] = useState('1');
   const [loading, setLoading] = useState(false);
 
-  const handleOrder = useCallback(async () => {
+  const handleOrder = useCallback(async (side) => {
     const quantity = parseInt(qty, 10);
     if (!quantity || quantity <= 0) {
       Alert.alert('오류', '올바른 수량을 입력하세요.');
@@ -122,36 +122,50 @@ function OrderSheet({ item, side, open, onClose, useSampleData }) {
     } finally {
       setLoading(false);
     }
-  }, [item, qty, side, onClose]);
+  }, [item, qty, onClose]);
 
   if (!item) return null;
-
-  const label = side === 'buy' ? '매수' : '매도';
-  const btnColor = side === 'buy' ? 'primary' : 'danger';
+  const rateColor = getPriceColor(item.profit_rate);
 
   return (
     <BottomSheet
       open={open}
       onClose={onClose}
-      title={`${item.name} ${label}`}
+      title={item.name}
       cta={
-        <Button
-          onPress={handleOrder}
-          display="full"
-          loading={loading}
-          color={btnColor}
-        >
-          {label}하기
-        </Button>
+        <View style={styles.sheetCtaRow}>
+          <Button
+            onPress={() => handleOrder('sell')}
+            color="danger"
+            variant="weak"
+            style={styles.sheetCtaBtn}
+            loading={loading}
+          >
+            매도
+          </Button>
+          <Button
+            onPress={() => handleOrder('buy')}
+            color="primary"
+            style={styles.sheetCtaBtn}
+            loading={loading}
+          >
+            매수
+          </Button>
+        </View>
       }
     >
-      <View style={styles.orderRow}>
-        <Text style={styles.sheetLabel}>현재가</Text>
-        <Text style={styles.sheetValue}>{formatPrice(item.current_price)}</Text>
+      <View style={styles.sheetMetaRow}>
+        <Text style={styles.sheetCode}>{item.ticker}</Text>
+        <Text style={[styles.sheetRate, { color: rateColor }]}>{formatRate(item.profit_rate)}</Text>
       </View>
+      <Text style={styles.sheetPriceMain}>{formatPrice(item.current_price)}</Text>
       <View style={styles.orderRow}>
         <Text style={styles.sheetLabel}>평균 구매가</Text>
         <Text style={styles.sheetValue}>{formatPrice(item.avg_price)}</Text>
+      </View>
+      <View style={styles.orderRow}>
+        <Text style={styles.sheetLabel}>평가 손익률</Text>
+        <Text style={[styles.sheetValue, { color: rateColor }]}>{formatRate(item.profit_rate)}</Text>
       </View>
       <Text style={[styles.sheetLabel, { marginTop: 16, marginBottom: 6 }]}>
         수량
@@ -170,11 +184,12 @@ function OrderSheet({ item, side, open, onClose, useSampleData }) {
 
 // ─── 잔고 카드 ────────────────────────────────────────────────────────────────
 
-function BalanceCard({ item, onOrder }) {
+function BalanceCard({ item, onSelect }) {
   const rateColor = getPriceColor(item.profit_rate);
 
   return (
     <ListRow
+      onPress={() => onSelect(item)}
       left={<InitialBadge name={item.name} ticker={item.ticker} />}
       title={item.name}
       subtitle={item.ticker}
@@ -189,25 +204,6 @@ function BalanceCard({ item, onOrder }) {
           <Text style={styles.priceSmall}>
             현재 {formatPrice(item.current_price)}
           </Text>
-          <View style={styles.orderBtns}>
-            <Button
-              onPress={() => onOrder(item, 'sell')}
-              size="small"
-              variant="weak"
-              color="danger"
-              style={{ marginRight: 6 }}
-            >
-              매도
-            </Button>
-            <Button
-              onPress={() => onOrder(item, 'buy')}
-              size="small"
-              variant="weak"
-              color="primary"
-            >
-              매수
-            </Button>
-          </View>
         </View>
       }
     />
@@ -269,7 +265,6 @@ export default function AccountScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [selected, setSelected] = useState(null);
-  const [orderSide, setOrderSide] = useState('buy');
   const [sheetOpen, setSheetOpen] = useState(false);
   const [useSampleData, setUseSampleData] = useState(false);
   const [notice, setNotice] = useState(null);
@@ -301,9 +296,8 @@ export default function AccountScreen() {
     load();
   }, [load]);
 
-  const handleOrder = useCallback((item, side) => {
+  const handleSelect = useCallback((item) => {
     setSelected(item);
-    setOrderSide(side);
     setSheetOpen(true);
   }, []);
 
@@ -353,7 +347,7 @@ export default function AccountScreen() {
               <BalanceCard
                 key={item.ticker}
                 item={item}
-                onOrder={handleOrder}
+                onSelect={handleSelect}
               />
             ))}
           </View>
@@ -362,7 +356,6 @@ export default function AccountScreen() {
 
       <OrderSheet
         item={selected}
-        side={orderSide}
         open={sheetOpen}
         useSampleData={useSampleData}
         onClose={() => setSheetOpen(false)}
@@ -475,7 +468,6 @@ const styles = StyleSheet.create({
   rightBlock: { alignItems: 'flex-end' },
   rateText: { fontSize: 15, fontWeight: '700' },
   priceSmall: { fontSize: 12, color: tdsDark.textSecondary, marginTop: 2 },
-  orderBtns: { flexDirection: 'row', marginTop: 8 },
 
   initialBadge: {
     width: 44,
@@ -566,8 +558,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginTop: 8,
+  },
+  sheetMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 },
+  sheetCode: { fontSize: 13, color: tdsDark.textTertiary },
+  sheetRate: { fontSize: 13, fontWeight: '600' },
+  sheetPriceMain: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: tdsDark.textPrimary,
+    letterSpacing: -0.5,
     marginBottom: 8,
   },
+  sheetCtaRow: { flexDirection: 'row', gap: 10 },
+  sheetCtaBtn: { flex: 1 },
   sheetLabel: { fontSize: 13, color: tdsDark.textSecondary },
   sheetValue: { fontSize: 15, fontWeight: '600', color: tdsDark.textPrimary },
   qtyInput: {

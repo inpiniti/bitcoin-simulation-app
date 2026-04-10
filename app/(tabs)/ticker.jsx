@@ -460,7 +460,7 @@ const styles = StyleSheet.create({
     detailCode: { fontSize: 13, color: tdsDark.textTertiary },
     detailRate: { fontSize: 13, fontWeight: '600' },
     detailPrice: { fontSize: 28, fontWeight: '700', color: tdsDark.textPrimary, letterSpacing: -0.5 },
-    detailCta: { flexDirection: 'row', gap: 10, paddingHorizontal: 16 },
+    detailCta: { flexDirection: 'row', gap: 10 },
     detailCtaBtn: { flex: 1 },
   statsBar: {
     flexDirection: 'row',
