@@ -12,25 +12,25 @@ jest.mock('expo-router', () => ({
 
 // Mock lucide-react-native icons
 jest.mock('lucide-react-native', () => ({
-  Activity: () => null,
-  MessageCircle: () => null,
+  Wallet: () => null,
   Brain: () => null,
-  Settings: () => null,
+  Clock: () => null,
+  BarChart2: () => null,
 }));
 
 describe('Tab Navigation Structure', () => {
   it('should have 4 tab screens defined', () => {
     // Tabs are defined by the file structure under app/(tabs)/
-    const tabs = ['server', 'ai', 'deeplearning', 'trading'];
+    const tabs = ['account', 'model', 'schedule', 'ticker'];
     expect(tabs).toHaveLength(4);
   });
 
   it('should define correct tab names', () => {
     const expectedTabs = [
-      { name: 'server', title: '서버상태' },
-      { name: 'ai', title: 'AI 질문' },
-      { name: 'deeplearning', title: '딥러닝스튜디오' },
-      { name: 'trading', title: '자동매매설정' },
+      { name: 'account', title: '계좌' },
+      { name: 'model', title: '모델' },
+      { name: 'schedule', title: '예약' },
+      { name: 'ticker', title: '티커' },
     ];
 
     expectedTabs.forEach((tab) => {

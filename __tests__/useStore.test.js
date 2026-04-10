@@ -35,22 +35,29 @@ describe('useStore', () => {
     expect(typeof state).toBe('object');
   });
 
-  it('should have serverStatus in initial state', () => {
-    const state = useStore.getState();
-    expect(state.serverStatus).toBeDefined();
-    expect(state.serverStatus).toBeNull();
-  });
-
-  it('should be able to set serverStatus', () => {
-    act(() => {
-      useStore.setState({ serverStatus: 'online' });
-    });
-    const state = useStore.getState();
-    expect(state.serverStatus).toBe('online');
-  });
-
   it('should have isLoading in initial state', () => {
     const state = useStore.getState();
     expect(typeof state.isLoading).toBe('boolean');
+    expect(state.isLoading).toBe(false);
+  });
+
+  it('should update isLoading through action', () => {
+    act(() => {
+      useStore.getState().setIsLoading(true);
+    });
+
+    expect(useStore.getState().isLoading).toBe(true);
+  });
+
+  it('should reset state', () => {
+    act(() => {
+      useStore.getState().setIsLoading(true);
+    });
+
+    act(() => {
+      useStore.getState().reset();
+    });
+
+    expect(useStore.getState().isLoading).toBe(false);
   });
 });

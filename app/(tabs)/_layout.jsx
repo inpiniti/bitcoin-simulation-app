@@ -1,80 +1,64 @@
 import { Tabs } from 'expo-router';
-import { Activity, MessageCircle, Brain, Settings, Newspaper } from 'lucide-react-native';
-import { Colors } from '../../constants/colors';
+import { Wallet, Brain, Clock, BarChart2 } from 'lucide-react-native';
+import { tdsDark, tdsColors } from '../../constants/tdsColors';
 
 export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors.accentBlue,
-        tabBarInactiveTintColor: Colors.textSecondary,
+        tabBarActiveTintColor: tdsColors.blue500,
+        tabBarInactiveTintColor: tdsDark.textSecondary,
         tabBarStyle: {
-          backgroundColor: Colors.bgSecondary,
-          borderTopColor: Colors.borderColor,
+          backgroundColor: tdsDark.bgCard,
+          borderTopColor: tdsDark.border,
           borderTopWidth: 1,
-          height: 60,
-          paddingBottom: 8,
-          paddingTop: 4,
+          height: 68,
+          paddingBottom: 10,
+          paddingTop: 8,
         },
         tabBarLabelStyle: {
           fontSize: 11,
-          fontWeight: '500',
+          fontWeight: '600',
         },
         headerStyle: {
-          backgroundColor: Colors.bgPrimary,
-          borderBottomColor: Colors.borderColor,
+          backgroundColor: tdsDark.bgCard,
+          borderBottomColor: tdsDark.border,
           borderBottomWidth: 1,
         },
-        headerTintColor: Colors.textPrimary,
+        headerTintColor: tdsDark.textPrimary,
         headerTitleStyle: {
-          fontWeight: '600',
-          fontSize: 16,
+          fontWeight: '700',
+          fontSize: 17,
         },
+        headerShadowVisible: false,
       }}
     >
       <Tabs.Screen
-        name="server"
+        name="account"
         options={{
-          title: '서버상태',
-          tabBarIcon: ({ color, size }) => (
-            <Activity color={color} size={size} />
-          ),
+          title: '계좌',
+          tabBarIcon: ({ color, size }) => <Wallet color={color} size={size} />,
         }}
       />
       <Tabs.Screen
-        name="ai"
+        name="model"
         options={{
-          title: 'AI 질문',
-          tabBarIcon: ({ color, size }) => (
-            <MessageCircle color={color} size={size} />
-          ),
+          title: '모델',
+          tabBarIcon: ({ color, size }) => <Brain color={color} size={size} />,
         }}
       />
       <Tabs.Screen
-        name="deeplearning"
+        name="schedule"
         options={{
-          title: '딥러닝스튜디오',
-          tabBarIcon: ({ color, size }) => (
-            <Brain color={color} size={size} />
-          ),
+          title: '예약',
+          tabBarIcon: ({ color, size }) => <Clock color={color} size={size} />,
         }}
       />
       <Tabs.Screen
-        name="news"
+        name="ticker"
         options={{
-          title: '뉴스',
-          tabBarIcon: ({ color, size }) => (
-            <Newspaper color={color} size={size} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="trading"
-        options={{
-          title: '자동매매설정',
-          tabBarIcon: ({ color, size }) => (
-            <Settings color={color} size={size} />
-          ),
+          title: '티커',
+          tabBarIcon: ({ color, size }) => <BarChart2 color={color} size={size} />,
         }}
       />
     </Tabs>
