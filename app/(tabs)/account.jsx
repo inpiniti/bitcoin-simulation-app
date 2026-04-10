@@ -63,10 +63,27 @@ function InitialBadge({ name, ticker }) {
 
 // ─── 포트폴리오 요약 ──────────────────────────────────────────────────────────
 
-function PortfolioSummary({ balance }) {
+function PortfolioSummary({ balance, summary }) {
   if (!balance || balance.length === 0) return null;
   const avgRate =
-    balance.reduce((sum, b) => sum + (b.profit_rate || 0), 0) / balance.length;
+    summary?.profitRate ??
+    (() => {
+      const totalBuy = balance.reduce(
+        (sum, b) => sum + (b.buy_amount_foreign || 0),
+        0,
+      );
+      const totalEval = balance.reduce(
+        (sum, b) => sum + (b.eval_amount_foreign || 0),
+        0,
+      );
+      if (totalBuy > 0) {
+        return ((totalEval - totalBuy) / totalBuy) * 100;
+      }
+      return (
+        balance.reduce((sum, b) => sum + (b.profit_rate || 0), 0) /
+        balance.length
+      );
+    })();
   const rateColor = getPriceColor(avgRate);
   return (
     <View style={styles.portfolioCard}>
@@ -222,15 +239,16 @@ function BalanceCard({ item, onSelect }) {
 
 // ─── 예수금 헤더 ──────────────────────────────────────────────────────────────
 
-function DepositHeader({ deposit, balance }) {
-  const evalAmount = balance.reduce(
+function DepositHeader({ deposit, balance, summary }) {
+  const fallbackEvalAmount = balance.reduce(
     (sum, b) => sum + (b.current_price || b.avg_price || 0) * (b.qty || 0),
     0,
   );
-  const total = deposit + evalAmount;
+  const evalAmount = summary?.evalAmount ?? fallbackEvalAmount;
+  const total = summary?.totalAsset ?? (deposit + evalAmount);
   return (
     <View style={styles.depositSection}>
-      <Text style={styles.depositSubLabel}>싙 자산</Text>
+      <Text style={styles.depositSubLabel}>실 자산</Text>
       <Text style={styles.depositAmount}>{formatPrice(total)}</Text>
       <View style={styles.depositSubRow}>
         <View>
@@ -272,6 +290,7 @@ export default function AccountScreen() {
   const authMode = useStore((s) => s.authMode);
   const [balance, setBalance] = useState([]);
   const [deposit, setDeposit] = useState(null);
+  const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
@@ -287,6 +306,7 @@ export default function AccountScreen() {
     if (authMode === 'guest' || authMode === 'locked') {
       setBalance(sampleAccount.balance);
       setDeposit(sampleAccount.deposit);
+      setSummary(null);
       setUseSampleData(true);
       setNotice('비로그인 모드라서 샘플 계좌 데이터를 보여주고 있어요.');
       setLoading(false);
@@ -297,11 +317,13 @@ export default function AccountScreen() {
       const data = await fetchKisBalance();
       setBalance(data.balance || []);
       setDeposit(data.deposit ?? null);
+      setSummary(data.summary ?? null);
       setUseSampleData(false);
       setNotice(null);
     } catch (e) {
       setBalance(sampleAccount.balance);
       setDeposit(sampleAccount.deposit);
+      setSummary(null);
       setUseSampleData(true);
       setNotice(
         '연결 전 화면을 미리 보고 있어요. 계좌 정보는 샘플 데이터로 보여주고 있어요.',
@@ -342,9 +364,9 @@ export default function AccountScreen() {
           </View>
         )}
         {deposit != null && (
-          <DepositHeader deposit={deposit} balance={balance} />
+          <DepositHeader deposit={deposit} balance={balance} summary={summary} />
         )}
-        {balance.length > 0 && <PortfolioSummary balance={balance} />}
+        {balance.length > 0 && <PortfolioSummary balance={balance} summary={summary} />}
 
         <Text style={styles.sectionTitle}>보유잔고</Text>
         {loading ? (
