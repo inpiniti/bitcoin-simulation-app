@@ -49,6 +49,21 @@ const PERIODS = [
 
 const THRESHOLDS = [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8];
 
+function ScreenHeader() {
+  return (
+    <View style={styles.screenHeader}>
+      <View>
+        <Text style={styles.headerEyebrow}>예약 · 자동매매</Text>
+        <Text style={styles.headerTitle}>자동매매 예약</Text>
+        <Text style={styles.headerSub}>설정 상태와 실행 로그를 함께 관리해요</Text>
+      </View>
+      <View style={styles.headerPill}>
+        <Text style={styles.headerPillText}>스케줄</Text>
+      </View>
+    </View>
+  );
+}
+
 // ─── 셀렉터 ────────────────────────────────────────────────────────────────────
 
 function ChipSelector({ options, value, onChange, disabled }) {
@@ -361,6 +376,7 @@ export default function ScheduleScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
+      <ScreenHeader />
       <SegmentControl
         tabs={TABS}
         activeTab={activeTab}
@@ -375,6 +391,27 @@ export default function ScheduleScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: tdsDark.bgPrimary },
+  screenHeader: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  headerEyebrow: { fontSize: 12, color: tdsDark.textTertiary, marginBottom: 2 },
+  headerTitle: { fontSize: 28, fontWeight: '800', color: tdsDark.textPrimary, letterSpacing: -0.5 },
+  headerSub: { fontSize: 13, color: tdsDark.textSecondary, marginTop: 2 },
+  headerPill: {
+    marginTop: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: tdsColors.blue50,
+    borderWidth: 1,
+    borderColor: `${tdsColors.blue500}33`,
+  },
+  headerPillText: { fontSize: 12, color: tdsColors.blue700, fontWeight: '700' },
   tabContent: { paddingHorizontal: 16, paddingBottom: 32 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
   noticeBox: {

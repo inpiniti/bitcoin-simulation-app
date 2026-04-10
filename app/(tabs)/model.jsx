@@ -41,6 +41,21 @@ const TABS = [
   { key: 'train',   label: '학습' },
 ];
 
+function ScreenHeader() {
+  return (
+    <View style={styles.screenHeader}>
+      <View>
+        <Text style={styles.headerEyebrow}>모델 · 예측 엔진</Text>
+        <Text style={styles.headerTitle}>AI 모델</Text>
+        <Text style={styles.headerSub}>예측 결과와 학습 진행을 한 번에 확인해요</Text>
+      </View>
+      <View style={styles.headerPill}>
+        <Text style={styles.headerPillText}>XGBoost</Text>
+      </View>
+    </View>
+  );
+}
+
 // ─── 셀렉터 ────────────────────────────────────────────────────────────────────
 
 function ChipSelector({ options, value, onChange, disabled }) {
@@ -371,6 +386,7 @@ export default function ModelScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
+      <ScreenHeader />
       <SegmentControl
         tabs={TABS}
         activeTab={activeTab}
@@ -385,6 +401,27 @@ export default function ModelScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: tdsDark.bgPrimary },
+  screenHeader: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  headerEyebrow: { fontSize: 12, color: tdsDark.textTertiary, marginBottom: 2 },
+  headerTitle: { fontSize: 28, fontWeight: '800', color: tdsDark.textPrimary, letterSpacing: -0.5 },
+  headerSub: { fontSize: 13, color: tdsDark.textSecondary, marginTop: 2 },
+  headerPill: {
+    marginTop: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: tdsColors.blue50,
+    borderWidth: 1,
+    borderColor: `${tdsColors.blue500}33`,
+  },
+  headerPillText: { fontSize: 12, color: tdsColors.blue700, fontWeight: '700' },
   tabContent: { paddingHorizontal: 16, paddingBottom: 32 },
   noticeBox: {
     marginBottom: 16,

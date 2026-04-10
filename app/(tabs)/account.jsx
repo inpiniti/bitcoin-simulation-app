@@ -9,7 +9,6 @@ import {
   Text,
   TextInput,
   StyleSheet,
-  ActivityIndicator,
   Alert,
   RefreshControl,
 } from 'react-native';
@@ -206,6 +205,22 @@ function DepositHeader({ deposit }) {
   );
 }
 
+function ScreenHeader() {
+  const today = new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' });
+  return (
+    <View style={styles.screenHeader}>
+      <View>
+        <Text style={styles.headerEyebrow}>계좌 · 자산</Text>
+        <Text style={styles.headerTitle}>내 자산</Text>
+        <Text style={styles.headerSub}>{today} 업데이트 기준으로 보여줘요</Text>
+      </View>
+      <View style={styles.headerPill}>
+        <Text style={styles.headerPillText}>실시간</Text>
+      </View>
+    </View>
+  );
+}
+
 // ─── 메인 ────────────────────────────────────────────────────────────────────
 
 export default function AccountScreen() {
@@ -251,47 +266,46 @@ export default function AccountScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      {!loading && (
-        <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={styles.content}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => load(true)}
-              tintColor={tdsColors.blue500}
-            />
-          }
-        >
-          {notice && (
-            <View style={styles.noticeBox}>
-              <Text style={styles.noticeText}>{notice}</Text>
-            </View>
-          )}
-          {deposit != null && <DepositHeader deposit={deposit} />}
-          {balance.length > 0 && <PortfolioSummary balance={balance} />}
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => load(true)}
+            tintColor={tdsColors.blue500}
+          />
+        }
+      >
+        <ScreenHeader />
+        {notice && (
+          <View style={styles.noticeBox}>
+            <Text style={styles.noticeText}>{notice}</Text>
+          </View>
+        )}
+        {deposit != null && <DepositHeader deposit={deposit} />}
+        {balance.length > 0 && <PortfolioSummary balance={balance} />}
 
-          <Text style={styles.sectionTitle}>보유잔고</Text>
-          {loading ? (
-            <View style={styles.listCard}>
-              {[1, 2, 3].map((i) => <SkeletonRow key={i} />)}
-            </View>
-          ) : balance.length === 0 ? (
-            <View style={styles.emptyBox}>
-              <Text style={styles.emptyIcon}>📦</Text>
-              <Text style={styles.emptyTitle}>아직 보유한 종목이 없어요</Text>
-              <Text style={styles.emptyDesc}>티커 탭에서 관심 종목을 매수하면 여기에 나타나요</Text>
-            </View>
-          ) : (
-            <View style={styles.listCard}>
-              {balance.map((item) => (
-                <BalanceCard key={item.ticker} item={item} onOrder={handleOrder} />
-              ))}
-            </View>
-          )}
-        </ScrollView>
-      )}
+        <Text style={styles.sectionTitle}>보유잔고</Text>
+        {loading ? (
+          <View style={styles.listCard}>
+            {[1, 2, 3].map((i) => <SkeletonRow key={i} />)}
+          </View>
+        ) : balance.length === 0 ? (
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyIcon}>📦</Text>
+            <Text style={styles.emptyTitle}>아직 보유한 종목이 없어요</Text>
+            <Text style={styles.emptyDesc}>티커 탭에서 관심 종목을 매수하면 여기에 나타나요</Text>
+          </View>
+        ) : (
+          <View style={styles.listCard}>
+            {balance.map((item) => (
+              <BalanceCard key={item.ticker} item={item} onOrder={handleOrder} />
+            ))}
+          </View>
+        )}
+      </ScrollView>
 
       <OrderSheet
         item={selected}
@@ -309,8 +323,29 @@ export default function AccountScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: tdsDark.bgPrimary },
   scroll: { flex: 1 },
-  content: { paddingBottom: 32 },
+  content: { paddingTop: 8, paddingBottom: 32 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
+  screenHeader: {
+    marginHorizontal: 16,
+    marginTop: 4,
+    marginBottom: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  headerEyebrow: { fontSize: 12, color: tdsDark.textTertiary, marginBottom: 2 },
+  headerTitle: { fontSize: 28, fontWeight: '800', color: tdsDark.textPrimary, letterSpacing: -0.5 },
+  headerSub: { fontSize: 13, color: tdsDark.textSecondary, marginTop: 2 },
+  headerPill: {
+    marginTop: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: tdsColors.blue50,
+    borderWidth: 1,
+    borderColor: `${tdsColors.blue500}33`,
+  },
+  headerPillText: { fontSize: 12, color: tdsColors.blue700, fontWeight: '600' },
   noticeBox: {
     marginHorizontal: 16,
     marginTop: 12,

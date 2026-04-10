@@ -20,6 +20,7 @@ export default function TabLayout() {
           fontSize: 11,
           fontWeight: '600',
         },
+        headerShown: false,
         headerStyle: {
           backgroundColor: tdsDark.bgCard,
           borderBottomColor: tdsDark.border,

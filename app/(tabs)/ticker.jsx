@@ -9,7 +9,6 @@ import {
   Text,
   TextInput,
   StyleSheet,
-  ActivityIndicator,
   Alert,
 } from 'react-native';
 import { tdsDark, tdsColors } from '../../constants/tdsColors';
@@ -179,6 +178,22 @@ function TickerRow({ item, onBuy }) {
   );
 }
 
+function ScreenHeader() {
+  const now = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+  return (
+    <View style={styles.screenHeader}>
+      <View>
+        <Text style={styles.headerEyebrow}>티커 · 시장 흐름</Text>
+        <Text style={styles.headerTitle}>오늘의 종목</Text>
+        <Text style={styles.headerSub}>{now} 기준 시세를 보여줘요</Text>
+      </View>
+      <View style={styles.headerPill}>
+        <Text style={styles.headerPillText}>LIVE</Text>
+      </View>
+    </View>
+  );
+}
+
 // ─── 메인 ────────────────────────────────────────────────────────────────────
 
 export default function TickerScreen() {
@@ -220,35 +235,34 @@ export default function TickerScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      {!loading && (
-        <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={styles.content}
-          showsVerticalScrollIndicator={false}
-        >
-          {notice && (
-            <View style={styles.noticeBox}>
-              <Text style={styles.noticeText}>{notice}</Text>
-            </View>
-          )}
-          <MarketIndexStrip indices={sampleMarketIndices} />
-          {tickers.length === 0 ? (
-            <View style={styles.emptyBox}>
-              <Text style={styles.emptyIcon}>📈</Text>
-              <Text style={styles.emptyTitle}>관심 종목이 없어요</Text>
-              <Text style={styles.emptyDesc}>다양한 시장의 종목을 곧 만나실 수 있어요</Text>
-            </View>
-          ) : (
-            <View style={styles.listCard}>
-              {loading
-                ? [1, 2, 3, 4, 5].map((i) => <SkeletonRow key={i} />)
-                : tickers.map((item) => (
-                    <TickerRow key={item.ticker} item={item} onBuy={handleBuy} />
-                  ))}
-            </View>
-          )}
-        </ScrollView>
-      )}
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        <ScreenHeader />
+        {notice && (
+          <View style={styles.noticeBox}>
+            <Text style={styles.noticeText}>{notice}</Text>
+          </View>
+        )}
+        <MarketIndexStrip indices={sampleMarketIndices} />
+        {tickers.length === 0 && !loading ? (
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyIcon}>📈</Text>
+            <Text style={styles.emptyTitle}>관심 종목이 없어요</Text>
+            <Text style={styles.emptyDesc}>다양한 시장의 종목을 곧 만나실 수 있어요</Text>
+          </View>
+        ) : (
+          <View style={styles.listCard}>
+            {loading
+              ? [1, 2, 3, 4, 5].map((i) => <SkeletonRow key={i} />)
+              : tickers.map((item) => (
+                  <TickerRow key={item.ticker} item={item} onBuy={handleBuy} />
+                ))}
+          </View>
+        )}
+      </ScrollView>
 
       <BuySheet
         item={selected}
@@ -267,6 +281,26 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   content: { paddingTop: 8, paddingBottom: 32 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
+  screenHeader: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  headerEyebrow: { fontSize: 12, color: tdsDark.textTertiary, marginBottom: 2 },
+  headerTitle: { fontSize: 28, fontWeight: '800', color: tdsDark.textPrimary, letterSpacing: -0.5 },
+  headerSub: { fontSize: 13, color: tdsDark.textSecondary, marginTop: 2 },
+  headerPill: {
+    marginTop: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: tdsColors.blue50,
+    borderWidth: 1,
+    borderColor: `${tdsColors.blue500}33`,
+  },
+  headerPillText: { fontSize: 12, color: tdsColors.blue700, fontWeight: '700' },
   noticeBox: {
     marginHorizontal: 16,
     marginBottom: 12,
