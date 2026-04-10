@@ -91,6 +91,38 @@ function SignalBadge({ signal }) {
   );
 }
 
+// ─── 예측 행 ────────────────────────────────────────────────────────────────────────
+const BADGE_COLORS = ['#3182f6', '#f04452', '#03b26c', '#fe9800', '#8b5cf6', '#06b6d4'];
+
+function PredictRow({ r }) {
+  const displayName = r.name || r.ticker;
+  const letter = displayName[0]?.toUpperCase() || '?';
+  const bg = BADGE_COLORS[displayName.charCodeAt(0) % BADGE_COLORS.length];
+  const buyPct = r.buy_probability != null ? Math.round(r.buy_probability * 100) : 50;
+  const sellPct = 100 - buyPct;
+  return (
+    <View style={styles.predictRow}>
+      <View style={[styles.predictBadge, { backgroundColor: bg }]}>
+        <Text style={styles.predictBadgeText}>{letter}</Text>
+      </View>
+      <View style={styles.predictInfo}>
+        <View style={styles.predictNameRow}>
+          <Text style={styles.predictName}>{displayName}</Text>
+          {r.name && <Text style={styles.predictCode}>{r.ticker}</Text>}
+        </View>
+        <View style={styles.probTrack}>
+          <View style={[styles.probFillBuy, { width: `${buyPct}%` }]} />
+        </View>
+        <View style={styles.probLabels}>
+          <Text style={styles.probBuyLabel}>매수 {buyPct}%</Text>
+          <Text style={styles.probSellLabel}>매도 {sellPct}%</Text>
+        </View>
+      </View>
+      <SignalBadge signal={r.signal ?? 'HOLD'} />
+    </View>
+  );
+}
+
 // ─── 예측 서브탭 ──────────────────────────────────────────────────────────────
 
 function PredictTab() {
@@ -186,27 +218,7 @@ function PredictTab() {
       {results.length > 0 && (
         <View style={styles.resultCard}>
           <Text style={styles.resultLabel}>예측 결과</Text>
-          {/* 헤더 */}
-          <View style={[styles.resultRow, styles.resultHeader]}>
-            <Text style={[styles.cell, styles.cellTicker, styles.headerText]}>티커</Text>
-            <Text style={[styles.cell, styles.cellSignal, styles.headerText]}>신호</Text>
-            <Text style={[styles.cell, styles.cellProb, styles.headerText]}>매수</Text>
-            <Text style={[styles.cell, styles.cellProb, styles.headerText]}>매도</Text>
-          </View>
-          {results.map((r) => (
-            <View key={r.ticker} style={styles.resultRow}>
-              <Text style={[styles.cell, styles.cellTicker, styles.rowText]}>{r.ticker}</Text>
-              <View style={[styles.cell, styles.cellSignal]}>
-                <SignalBadge signal={r.signal ?? 'HOLD'} />
-              </View>
-              <Text style={[styles.cell, styles.cellProb, styles.rowText]}>
-                {r.buy_probability != null ? (r.buy_probability * 100).toFixed(0) + '%' : '-'}
-              </Text>
-              <Text style={[styles.cell, styles.cellProb, styles.rowText]}>
-                {r.sell_probability != null ? (r.sell_probability * 100).toFixed(0) + '%' : '-'}
-              </Text>
-            </View>
-          ))}
+          {results.map((r) => <PredictRow key={r.ticker} r={r} />)}
         </View>
       )}
     </ScrollView>
@@ -469,20 +481,42 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
 
-  // 예측 결과 테이블
-  resultRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
-  resultHeader: {
+  // 예측 결과 행
+  predictRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: tdsDark.border,
-    paddingBottom: 8,
-    marginBottom: 4,
+    gap: 12,
   },
-  headerText: { fontSize: 12, color: tdsDark.textSecondary, fontWeight: '600' },
-  rowText: { fontSize: 13, color: tdsDark.textPrimary },
-  cell: { justifyContent: 'center' },
-  cellTicker: { flex: 1.2 },
-  cellSignal: { flex: 1.2 },
-  cellProb: { flex: 0.9, textAlign: 'right' },
+  predictBadge: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  predictBadgeText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  predictInfo: { flex: 1, gap: 6 },
+  predictNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  predictName: { fontSize: 14, fontWeight: '600', color: tdsDark.textPrimary },
+  predictCode: { fontSize: 11, color: tdsDark.textTertiary },
+  probTrack: {
+    height: 5,
+    backgroundColor: `${tdsColors.green400}33`,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  probFillBuy: {
+    height: '100%',
+    backgroundColor: tdsColors.red500,
+    borderRadius: 3,
+  },
+  probLabels: { flexDirection: 'row', justifyContent: 'space-between' },
+  probBuyLabel: { fontSize: 11, color: tdsColors.red500, fontWeight: '600' },
+  probSellLabel: { fontSize: 11, color: tdsColors.green500, fontWeight: '600' },
 
   // 학습 진행률
   progressRow: { flexDirection: 'row', alignItems: 'center' },

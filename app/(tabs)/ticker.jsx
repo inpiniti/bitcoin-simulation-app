@@ -54,6 +54,23 @@ function InitialBadge({ name, ticker }) {
   );
 }
 
+// ─── 종목 통계 바 ─────────────────────────────────────────────────────────
+function TickerStatsBar({ tickers }) {
+  if (!tickers || tickers.length === 0) return null;
+  const ups = tickers.filter((t) => t.today_rate > 0).length;
+  const downs = tickers.filter((t) => t.today_rate < 0).length;
+  const avgRate = tickers.reduce((s, t) => s + t.today_rate, 0) / tickers.length;
+  return (
+    <View style={styles.statsBar}>
+      <Text style={[styles.statsChip, { color: '#f04452' }]}>↑ {ups}</Text>
+      <Text style={styles.statsSep}>·</Text>
+      <Text style={[styles.statsChip, { color: '#03b26c' }]}>↓ {downs}</Text>
+      <Text style={styles.statsSep}>·</Text>
+      <Text style={[styles.statsChip, { color: getPriceColor(avgRate) }]}>평균 {formatRate(avgRate)}</Text>
+    </View>
+  );
+}
+
 // ─── 시장 지수 스트립 ─────────────────────────────────────────────────────
 
 function MarketIndexStrip({ indices }) {
@@ -247,6 +264,7 @@ export default function TickerScreen() {
           </View>
         )}
         <MarketIndexStrip indices={sampleMarketIndices} />
+        <TickerStatsBar tickers={tickers} />
         {tickers.length === 0 && !loading ? (
           <View style={styles.emptyBox}>
             <Text style={styles.emptyIcon}>📈</Text>
@@ -311,15 +329,8 @@ const styles = StyleSheet.create({
   },
   noticeText: { fontSize: 13, lineHeight: 19, color: tdsColors.blue700 },
   listCard: {
-    marginHorizontal: 16,
-    borderRadius: 12,
-    overflow: 'hidden',
+    marginTop: 4,
     backgroundColor: tdsDark.bgCard,
-    shadowColor: '#000000',
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3,
   },
   rightBlock: { alignItems: 'flex-end' },
   rateText: { fontSize: 14, fontWeight: '600' },
@@ -376,6 +387,15 @@ const styles = StyleSheet.create({
   indexLabel: { fontSize: 11, color: tdsDark.textTertiary, marginBottom: 2 },
   indexValue: { fontSize: 14, fontWeight: '600', color: tdsDark.textPrimary, marginBottom: 2 },
   indexChange: { fontSize: 12, fontWeight: '600' },
+  statsBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  statsChip: { fontSize: 13, fontWeight: '600' },
+  statsSep: { fontSize: 13, color: tdsDark.textTertiary },
   sheetLabel: { fontSize: 13, color: tdsDark.textSecondary, marginBottom: 4 },
   sheetPrice: { fontSize: 22, fontWeight: '700', color: tdsDark.textPrimary },
   qtyInput: {

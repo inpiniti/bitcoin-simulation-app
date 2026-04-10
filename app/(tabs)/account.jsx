@@ -196,11 +196,26 @@ function BalanceCard({ item, onOrder }) {
 
 // ─── 예수금 헤더 ──────────────────────────────────────────────────────────────
 
-function DepositHeader({ deposit }) {
+function DepositHeader({ deposit, balance }) {
+  const evalAmount = balance.reduce(
+    (sum, b) => sum + (b.current_price || b.avg_price || 0) * (b.qty || 0), 0
+  );
+  const total = deposit + evalAmount;
   return (
     <View style={styles.depositSection}>
-      <Text style={styles.depositLabel}>예수금</Text>
-      <Text style={styles.depositAmount}>{formatPrice(deposit)}</Text>
+      <Text style={styles.depositSubLabel}>싙 자산</Text>
+      <Text style={styles.depositAmount}>{formatPrice(total)}</Text>
+      <View style={styles.depositSubRow}>
+        <View>
+          <Text style={styles.depositItemLabel}>예수금</Text>
+          <Text style={styles.depositItemValue}>{formatPrice(deposit)}</Text>
+        </View>
+        <View style={styles.depositVDivider} />
+        <View>
+          <Text style={styles.depositItemLabel}>평가금액</Text>
+          <Text style={styles.depositItemValue}>{formatPrice(evalAmount)}</Text>
+        </View>
+      </View>
     </View>
   );
 }
@@ -284,7 +299,7 @@ export default function AccountScreen() {
             <Text style={styles.noticeText}>{notice}</Text>
           </View>
         )}
-        {deposit != null && <DepositHeader deposit={deposit} />}
+        {deposit != null && <DepositHeader deposit={deposit} balance={balance} />}
         {balance.length > 0 && <PortfolioSummary balance={balance} />}
 
         <Text style={styles.sectionTitle}>보유잔고</Text>
@@ -369,7 +384,11 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     elevation: 4,
   },
-  depositLabel: { fontSize: 13, color: tdsDark.textSecondary, marginBottom: 4 },
+  depositSubLabel: { fontSize: 13, color: tdsDark.textTertiary, marginBottom: 4 },
+  depositSubRow: { flexDirection: 'row', marginTop: 16, gap: 24, alignItems: 'center' },
+  depositVDivider: { width: 1, height: 28, backgroundColor: tdsDark.border },
+  depositItemLabel: { fontSize: 12, color: tdsDark.textTertiary, marginBottom: 3 },
+  depositItemValue: { fontSize: 15, fontWeight: '600', color: tdsDark.textSecondary },
   depositAmount: { fontSize: 28, fontWeight: '700', color: tdsDark.textPrimary },
 
   sectionTitle: {
@@ -380,15 +399,8 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   listCard: {
-    marginHorizontal: 16,
-    borderRadius: 12,
-    overflow: 'hidden',
+    marginTop: 4,
     backgroundColor: tdsDark.bgCard,
-    shadowColor: '#000000',
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3,
   },
 
   rightBlock: { alignItems: 'flex-end' },
