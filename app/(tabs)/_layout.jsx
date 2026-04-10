@@ -12,16 +12,16 @@ export default function TabLayout() {
           backgroundColor: tdsDark.bgCard,
           borderTopColor: tdsDark.border,
           borderTopWidth: 1,
-          height: 82,
+          height: 74,
           paddingBottom: 18,
-          paddingTop: 10,
+          paddingTop: 0,
         },
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: '600',
         },
         tabBarItemStyle: {
-          paddingTop: 2,
+          paddingTop: 0,
         },
         headerShown: false,
         headerStyle: {
