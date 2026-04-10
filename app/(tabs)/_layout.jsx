@@ -12,10 +12,8 @@ export default function TabLayout() {
           backgroundColor: tdsDark.bgCard,
           borderTopColor: tdsDark.border,
           borderTopWidth: 1,
-          borderTopLeftRadius: 22,
-          borderTopRightRadius: 22,
-          height: 80,
-          paddingBottom: 14,
+          height: 82,
+          paddingBottom: 18,
           paddingTop: 10,
         },
         tabBarLabelStyle: {
@@ -45,8 +43,8 @@ export default function TabLayout() {
           title: '계좌',
           tabBarIcon: ({ focused, size }) => (
             <Ionicons
-              name={focused ? 'wallet' : 'wallet-outline'}
-              color={focused ? tdsColors.blue700 : tdsColors.grey500}
+              name="wallet"
+              color={focused ? tdsColors.blue700 : tdsColors.grey400}
               size={size}
             />
           ),
@@ -58,8 +56,8 @@ export default function TabLayout() {
           title: '모델',
           tabBarIcon: ({ focused, size }) => (
             <Ionicons
-              name={focused ? 'hardware-chip' : 'hardware-chip-outline'}
-              color={focused ? tdsColors.blue700 : tdsColors.grey500}
+              name="hardware-chip"
+              color={focused ? tdsColors.blue700 : tdsColors.grey400}
               size={size}
             />
           ),
@@ -71,8 +69,8 @@ export default function TabLayout() {
           title: '예약',
           tabBarIcon: ({ focused, size }) => (
             <Ionicons
-              name={focused ? 'time' : 'time-outline'}
-              color={focused ? tdsColors.blue700 : tdsColors.grey500}
+              name="time"
+              color={focused ? tdsColors.blue700 : tdsColors.grey400}
               size={size}
             />
           ),
@@ -84,8 +82,8 @@ export default function TabLayout() {
           title: '티커',
           tabBarIcon: ({ focused, size }) => (
             <Ionicons
-              name={focused ? 'bar-chart' : 'bar-chart-outline'}
-              color={focused ? tdsColors.blue700 : tdsColors.grey500}
+              name="bar-chart"
+              color={focused ? tdsColors.blue700 : tdsColors.grey400}
               size={size}
             />
           ),
