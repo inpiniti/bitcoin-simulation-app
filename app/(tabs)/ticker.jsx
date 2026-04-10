@@ -19,6 +19,7 @@ import { BottomSheet } from '../../components/tds/BottomSheet';
 import { supabase } from '../../lib/supabaseClient';
 import { submitKisOrder } from '../../lib/kisApi';
 import { sampleTickers, sampleMarketIndices } from '../../lib/sampleData';
+import useStore from '../../store/useStore';
 import { getPriceColor, formatRate, formatPrice } from '../../utils/price';
 
 // ─── 스켈레튼 행 ────────────────────────────────────────────────────────────
@@ -72,7 +73,9 @@ function TickerStatsBar({ tickers }) {
     <View style={styles.statsBar}>
       <Text style={[styles.statsChip, { color: '#f04452' }]}>↑ {ups}</Text>
       <Text style={styles.statsSep}>·</Text>
-      <Text style={[styles.statsChip, { color: tdsColors.blue500 }]}>↓ {downs}</Text>
+      <Text style={[styles.statsChip, { color: tdsColors.blue500 }]}>
+        ↓ {downs}
+      </Text>
       <Text style={styles.statsSep}>·</Text>
       <Text style={[styles.statsChip, { color: getPriceColor(avgRate) }]}>
         평균 {formatRate(avgRate)}
@@ -119,31 +122,34 @@ function TickerDetailSheet({ item, open, onClose, useSampleData }) {
   const [qty, setQty] = useState('1');
   const [loading, setLoading] = useState(false);
 
-  const handleOrder = useCallback(async (side) => {
-    const quantity = parseInt(qty, 10);
-    if (!quantity || quantity <= 0) {
-      Alert.alert('오류', '올바른 수량을 입력하세요.');
-      return;
-    }
-    setLoading(true);
-    try {
-      if (!useSampleData) {
-        await submitKisOrder({ ticker: item.ticker, quantity, side });
+  const handleOrder = useCallback(
+    async (side) => {
+      const quantity = parseInt(qty, 10);
+      if (!quantity || quantity <= 0) {
+        Alert.alert('오류', '올바른 수량을 입력하세요.');
+        return;
       }
-      const label = side === 'buy' ? '매수' : '매도';
-      Alert.alert(
-        '주문 확인',
-        useSampleData
-          ? `${item.name} ${quantity}주 ${label} 흐름을 샘플로 보여주고 있어요.`
-          : `${item.name} ${quantity}주 ${label} 주문이 완료되었습니다.`,
-      );
-      onClose();
-    } catch (e) {
-      Alert.alert('주문 실패', e.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [item, qty, onClose]);
+      setLoading(true);
+      try {
+        if (!useSampleData) {
+          await submitKisOrder({ ticker: item.ticker, quantity, side });
+        }
+        const label = side === 'buy' ? '매수' : '매도';
+        Alert.alert(
+          '주문 확인',
+          useSampleData
+            ? `${item.name} ${quantity}주 ${label} 흐름을 샘플로 보여주고 있어요.`
+            : `${item.name} ${quantity}주 ${label} 주문이 완료되었습니다.`,
+        );
+        onClose();
+      } catch (e) {
+        Alert.alert('주문 실패', e.message);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [item, qty, onClose],
+  );
 
   if (!item) return null;
   const rateColor = getPriceColor(item.today_rate);
@@ -182,7 +188,9 @@ function TickerDetailSheet({ item, open, onClose, useSampleData }) {
         </Text>
       </View>
       <Text style={styles.detailPrice}>{formatPrice(item.current_price)}</Text>
-      <Text style={[styles.sheetLabel, { marginTop: 20, marginBottom: 6 }]}>수량</Text>
+      <Text style={[styles.sheetLabel, { marginTop: 20, marginBottom: 6 }]}>
+        수량
+      </Text>
       <TextInput
         style={styles.qtyInput}
         value={qty}
@@ -242,6 +250,7 @@ function ScreenHeader() {
 // ─── 메인 ────────────────────────────────────────────────────────────────────
 
 export default function TickerScreen() {
+  const authMode = useStore((s) => s.authMode);
   const [tickers, setTickers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -253,6 +262,13 @@ export default function TickerScreen() {
   const loadTickers = useCallback(async () => {
     setLoading(true);
     setError(null);
+    if (authMode === 'guest' || authMode === 'locked') {
+      setTickers(sampleTickers);
+      setUseSampleData(true);
+      setNotice('비로그인 모드라서 샘플 티커 데이터를 먼저 보여주고 있어요.');
+      setLoading(false);
+      return;
+    }
     try {
       const { data, error: err } = await supabase
         .from('ticker_group')
@@ -271,7 +287,7 @@ export default function TickerScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [authMode]);
 
   useEffect(() => {
     loadTickers();
@@ -310,7 +326,11 @@ export default function TickerScreen() {
             {loading
               ? [1, 2, 3, 4, 5].map((i) => <SkeletonRow key={i} />)
               : tickers.map((item) => (
-                  <TickerRow key={item.ticker} item={item} onPress={handleSelect} />
+                  <TickerRow
+                    key={item.ticker}
+                    item={item}
+                    onPress={handleSelect}
+                  />
                 ))}
           </View>
         )}
@@ -456,12 +476,22 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   indexChange: { fontSize: 12, fontWeight: '600' },
-    detailMeta: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 },
-    detailCode: { fontSize: 13, color: tdsDark.textTertiary },
-    detailRate: { fontSize: 13, fontWeight: '600' },
-    detailPrice: { fontSize: 28, fontWeight: '700', color: tdsDark.textPrimary, letterSpacing: -0.5 },
-    detailCta: { flexDirection: 'row', gap: 10 },
-    detailCtaBtn: { flex: 1 },
+  detailMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 6,
+  },
+  detailCode: { fontSize: 13, color: tdsDark.textTertiary },
+  detailRate: { fontSize: 13, fontWeight: '600' },
+  detailPrice: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: tdsDark.textPrimary,
+    letterSpacing: -0.5,
+  },
+  detailCta: { flexDirection: 'row', gap: 10 },
+  detailCtaBtn: { flex: 1 },
   statsBar: {
     flexDirection: 'row',
     alignItems: 'center',

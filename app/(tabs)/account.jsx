@@ -18,6 +18,7 @@ import { Button } from '../../components/tds/Button';
 import { BottomSheet } from '../../components/tds/BottomSheet';
 import { fetchKisBalance, submitKisOrder } from '../../lib/kisApi';
 import { sampleAccount } from '../../lib/sampleData';
+import useStore from '../../store/useStore';
 import { getPriceColor, formatRate, formatPrice } from '../../utils/price';
 
 // ─── 스켈레튼 행 ────────────────────────────────────────────────────────────
@@ -100,29 +101,32 @@ function OrderSheet({ item, open, onClose, useSampleData }) {
   const [qty, setQty] = useState('1');
   const [loading, setLoading] = useState(false);
 
-  const handleOrder = useCallback(async (side) => {
-    const quantity = parseInt(qty, 10);
-    if (!quantity || quantity <= 0) {
-      Alert.alert('오류', '올바른 수량을 입력하세요.');
-      return;
-    }
-    setLoading(true);
-    try {
-      if (!useSampleData) {
-        await submitKisOrder({ ticker: item.ticker, quantity, side });
+  const handleOrder = useCallback(
+    async (side) => {
+      const quantity = parseInt(qty, 10);
+      if (!quantity || quantity <= 0) {
+        Alert.alert('오류', '올바른 수량을 입력하세요.');
+        return;
       }
-      const label = side === 'buy' ? '매수' : '매도';
-      const message = useSampleData
-        ? `${item.name} ${quantity}주 ${label} 흐름을 샘플로 보여주고 있어요.`
-        : `${item.name} ${quantity}주 ${label} 주문이 완료되었습니다.`;
-      Alert.alert('주문 확인', message);
-      onClose();
-    } catch (e) {
-      Alert.alert('주문 실패', e.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [item, qty, onClose]);
+      setLoading(true);
+      try {
+        if (!useSampleData) {
+          await submitKisOrder({ ticker: item.ticker, quantity, side });
+        }
+        const label = side === 'buy' ? '매수' : '매도';
+        const message = useSampleData
+          ? `${item.name} ${quantity}주 ${label} 흐름을 샘플로 보여주고 있어요.`
+          : `${item.name} ${quantity}주 ${label} 주문이 완료되었습니다.`;
+        Alert.alert('주문 확인', message);
+        onClose();
+      } catch (e) {
+        Alert.alert('주문 실패', e.message);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [item, qty, onClose],
+  );
 
   if (!item) return null;
   const rateColor = getPriceColor(item.profit_rate);
@@ -156,16 +160,22 @@ function OrderSheet({ item, open, onClose, useSampleData }) {
     >
       <View style={styles.sheetMetaRow}>
         <Text style={styles.sheetCode}>{item.ticker}</Text>
-        <Text style={[styles.sheetRate, { color: rateColor }]}>{formatRate(item.profit_rate)}</Text>
+        <Text style={[styles.sheetRate, { color: rateColor }]}>
+          {formatRate(item.profit_rate)}
+        </Text>
       </View>
-      <Text style={styles.sheetPriceMain}>{formatPrice(item.current_price)}</Text>
+      <Text style={styles.sheetPriceMain}>
+        {formatPrice(item.current_price)}
+      </Text>
       <View style={styles.orderRow}>
         <Text style={styles.sheetLabel}>평균 구매가</Text>
         <Text style={styles.sheetValue}>{formatPrice(item.avg_price)}</Text>
       </View>
       <View style={styles.orderRow}>
         <Text style={styles.sheetLabel}>평가 손익률</Text>
-        <Text style={[styles.sheetValue, { color: rateColor }]}>{formatRate(item.profit_rate)}</Text>
+        <Text style={[styles.sheetValue, { color: rateColor }]}>
+          {formatRate(item.profit_rate)}
+        </Text>
       </View>
       <Text style={[styles.sheetLabel, { marginTop: 16, marginBottom: 6 }]}>
         수량
@@ -259,6 +269,7 @@ function ScreenHeader() {
 // ─── 메인 ────────────────────────────────────────────────────────────────────
 
 export default function AccountScreen() {
+  const authMode = useStore((s) => s.authMode);
   const [balance, setBalance] = useState([]);
   const [deposit, setDeposit] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -273,6 +284,15 @@ export default function AccountScreen() {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     setError(null);
+    if (authMode === 'guest' || authMode === 'locked') {
+      setBalance(sampleAccount.balance);
+      setDeposit(sampleAccount.deposit);
+      setUseSampleData(true);
+      setNotice('비로그인 모드라서 샘플 계좌 데이터를 보여주고 있어요.');
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
     try {
       const data = await fetchKisBalance();
       setBalance(data.balance || []);
@@ -290,7 +310,7 @@ export default function AccountScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [authMode]);
 
   useEffect(() => {
     load();
@@ -560,7 +580,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 8,
   },
-  sheetMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 },
+  sheetMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 4,
+  },
   sheetCode: { fontSize: 13, color: tdsDark.textTertiary },
   sheetRate: { fontSize: 13, fontWeight: '600' },
   sheetPriceMain: {
