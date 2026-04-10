@@ -27,10 +27,14 @@ function formatDate(iso) {
 
 // ─── 모델 행 ──────────────────────────────────────────────────────────────────
 
-function ModelRow({ model, isLast }) {
+function ModelRow({ model, isLast, onPress }) {
   const acc = model.accuracy != null ? Math.round(model.accuracy * 100) : null;
   return (
-    <View style={[styles.modelRow, !isLast && styles.modelRowBorder]}>
+    <TouchableOpacity
+      style={[styles.modelRow, !isLast && styles.modelRowBorder]}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
       <View style={styles.modelIcon}>
         <Ionicons
           name="hardware-chip-outline"
@@ -47,7 +51,8 @@ function ModelRow({ model, isLast }) {
           <Text style={styles.accText}>{acc}%</Text>
         </View>
       )}
-    </View>
+      <Ionicons name="chevron-forward" size={16} color={tdsDark.textTertiary} />
+    </TouchableOpacity>
   );
 }
 
@@ -136,6 +141,12 @@ export default function ModelScreen() {
                 key={model.id}
                 model={model}
                 isLast={i === models.length - 1}
+                onPress={() =>
+                  router.push({
+                    pathname: '/predict',
+                    params: { modelId: model.id, modelName: model.name },
+                  })
+                }
               />
             ))}
           </View>

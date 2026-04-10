@@ -1,6 +1,7 @@
 /**
- * 예측 탭 — XGBoost 모델로 시장 예측
- * 시장 + 기간 선택 → 배치 예측 결과 테이블
+ * 예측 화면 — XGBoost 모델로 시장 예측
+ * 모델 목록에서 모델을 탭하면 스택으로 push
+ * 탭바 없음, 상단 뒤로가기 버튼
  */
 import { useState, useCallback, useEffect } from 'react';
 import {
@@ -11,12 +12,14 @@ import {
   StyleSheet,
   TouchableOpacity,
 } from 'react-native';
-import { tdsDark, tdsColors } from '../../constants/tdsColors';
-import { Button } from '../../components/tds/Button';
-import { Badge } from '../../components/tds/Badge';
-import { supabase } from '../../lib/supabaseClient';
-import { XGB_PREDICT_URL } from '../../lib/xgbApi';
-import { samplePredictionResults } from '../../lib/sampleData';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { tdsDark, tdsColors } from '../constants/tdsColors';
+import { Button } from '../components/tds/Button';
+import { Badge } from '../components/tds/Badge';
+import { supabase } from '../lib/supabaseClient';
+import { XGB_PREDICT_URL } from '../lib/xgbApi';
+import { samplePredictionResults } from '../lib/sampleData';
 
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
 
@@ -113,6 +116,9 @@ function PredictRow({ r }) {
 // ─── 메인 ────────────────────────────────────────────────────────────────────
 
 export default function PredictScreen() {
+  const router = useRouter();
+  const { modelId: paramModelId, modelName } = useLocalSearchParams();
+
   const [market, setMarket] = useState('kospi');
   const [period, setPeriod] = useState(30);
   const [results, setResults] = useState(samplePredictionResults.kospi);
@@ -133,13 +139,17 @@ export default function PredictScreen() {
     setResults([]);
 
     try {
-      const { data: models } = await supabase
-        .from('ml_models')
-        .select('id, name')
-        .order('created_at', { ascending: false })
-        .limit(1);
+      // 파라미터로 받은 모델 ID 사용, 없으면 최신 모델 조회
+      let modelId = paramModelId;
+      if (!modelId) {
+        const { data: models } = await supabase
+          .from('ml_models')
+          .select('id')
+          .order('created_at', { ascending: false })
+          .limit(1);
+        modelId = models?.[0]?.id;
+      }
 
-      const modelId = models?.[0]?.id;
       if (!modelId)
         throw new Error('학습된 모델이 없습니다. 먼저 모델 탭에서 학습을 실행하세요.');
 
@@ -149,8 +159,7 @@ export default function PredictScreen() {
         .limit(10);
 
       const tickers = tickerRows || [];
-      if (tickers.length === 0)
-        throw new Error('티커 목록이 없습니다.');
+      if (tickers.length === 0) throw new Error('티커 목록이 없습니다.');
 
       const predictions = [];
       for (const { ticker, name } of tickers) {
@@ -178,19 +187,26 @@ export default function PredictScreen() {
     } finally {
       setLoading(false);
     }
-  }, [market, period]);
+  }, [market, period, paramModelId]);
 
   return (
     <SafeAreaView style={styles.safe}>
-      <View style={styles.screenHeader}>
-        <View>
-          <Text style={styles.headerEyebrow}>모델 · 예측 엔진</Text>
+      {/* 상단 헤더 */}
+      <View style={styles.header}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="chevron-back" size={24} color={tdsDark.textPrimary} />
+        </TouchableOpacity>
+        <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>예측</Text>
-          <Text style={styles.headerSub}>AI 모델로 종목 신호를 분석해요</Text>
+          {modelName ? (
+            <Text style={styles.headerSub}>{modelName}</Text>
+          ) : null}
         </View>
-        <View style={styles.headerPill}>
-          <Text style={styles.headerPillText}>XGBoost</Text>
-        </View>
+        <View style={styles.headerRight} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
@@ -243,34 +259,29 @@ export default function PredictScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: tdsDark.bgPrimary },
 
-  screenHeader: {
-    marginHorizontal: 16,
-    marginTop: 12,
-    marginBottom: 10,
+  header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: tdsDark.border,
   },
-  headerEyebrow: { fontSize: 12, color: tdsDark.textTertiary, marginBottom: 2 },
+  backBtn: { padding: 8 },
+  headerCenter: { flex: 1, alignItems: 'center' },
   headerTitle: {
-    fontSize: 28,
-    fontWeight: '800',
+    fontSize: 17,
+    fontWeight: '700',
     color: tdsDark.textPrimary,
-    letterSpacing: -0.5,
   },
-  headerSub: { fontSize: 13, color: tdsDark.textSecondary, marginTop: 2 },
-  headerPill: {
-    marginTop: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: tdsColors.blue50,
-    borderWidth: 1,
-    borderColor: `${tdsColors.blue500}33`,
+  headerSub: {
+    fontSize: 12,
+    color: tdsDark.textTertiary,
+    marginTop: 2,
   },
-  headerPillText: { fontSize: 12, color: tdsColors.blue700, fontWeight: '700' },
+  headerRight: { width: 40 },
 
-  content: { paddingHorizontal: 16, paddingBottom: 32 },
+  content: { paddingHorizontal: 16, paddingBottom: 32, paddingTop: 16 },
 
   noticeBox: {
     marginBottom: 16,
