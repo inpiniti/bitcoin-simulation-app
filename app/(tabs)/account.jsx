@@ -23,10 +23,43 @@ import { getPriceColor, formatRate, formatPrice } from '../../utils/price';
 
 // ─── 이니셜 뱃지 ──────────────────────────────────────────────────────────────
 
-function InitialBadge({ ticker }) {
+const BADGE_COLORS = ['#3182f6', '#f04452', '#03b26c', '#fe9800', '#8b5cf6', '#06b6d4'];
+
+function InitialBadge({ name, ticker }) {
+  const display = name || ticker || '?';
+  const letter = display[0].toUpperCase();
+  const bg = BADGE_COLORS[display.charCodeAt(0) % BADGE_COLORS.length];
   return (
-    <View style={styles.initialBadge}>
-      <Text style={styles.initialText}>{(ticker || '?')[0]}</Text>
+    <View style={[styles.initialBadge, { backgroundColor: bg }]}>
+      <Text style={styles.initialText}>{letter}</Text>
+    </View>
+  );
+}
+
+// ─── 포트폴리오 요약 ──────────────────────────────────────────────────────────
+
+function PortfolioSummary({ balance }) {
+  if (!balance || balance.length === 0) return null;
+  const avgRate = balance.reduce((sum, b) => sum + (b.profit_rate || 0), 0) / balance.length;
+  const rateColor = getPriceColor(avgRate);
+  return (
+    <View style={styles.portfolioCard}>
+      <View style={styles.portfolioTopRow}>
+        <Text style={styles.portfolioTitle}>{balance.length}종목 보유 중</Text>
+        <Text style={[styles.portfolioAvgRate, { color: rateColor }]}>
+          평균 {formatRate(avgRate)}
+        </Text>
+      </View>
+      <View style={styles.portfolioChips}>
+        {balance.map((b) => (
+          <View key={b.ticker} style={styles.portfolioChip}>
+            <Text style={styles.portfolioChipName}>{b.name}</Text>
+            <Text style={[styles.portfolioChipRate, { color: getPriceColor(b.profit_rate) }]}>
+              {formatRate(b.profit_rate)}
+            </Text>
+          </View>
+        ))}
+      </View>
     </View>
   );
 }
@@ -105,7 +138,7 @@ function BalanceCard({ item, onOrder }) {
 
   return (
     <ListRow
-      left={<InitialBadge ticker={item.ticker} />}
+      left={<InitialBadge name={item.name} ticker={item.ticker} />}
       title={item.name}
       subtitle={item.ticker}
       right={
@@ -225,6 +258,7 @@ export default function AccountScreen() {
             </View>
           )}
           {deposit != null && <DepositHeader deposit={deposit} />}
+          {balance.length > 0 && <PortfolioSummary balance={balance} />}
 
           <Text style={styles.sectionTitle}>보유잔고</Text>
           {balance.length === 0 ? (
@@ -313,11 +347,43 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: tdsDark.bgSecondary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  initialText: { color: tdsDark.textPrimary, fontSize: 17, fontWeight: '700' },
+  initialText: { color: '#fff', fontSize: 17, fontWeight: '700' },
+
+  portfolioCard: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    padding: 16,
+    borderRadius: 20,
+    backgroundColor: tdsDark.bgCard,
+    shadowColor: '#000000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  portfolioTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  portfolioTitle: { fontSize: 14, fontWeight: '600', color: tdsDark.textPrimary },
+  portfolioAvgRate: { fontSize: 16, fontWeight: '700' },
+  portfolioChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  portfolioChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: tdsDark.bgSecondary,
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    gap: 6,
+  },
+  portfolioChipName: { fontSize: 13, color: tdsDark.textSecondary },
+  portfolioChipRate: { fontSize: 13, fontWeight: '600' },
 
   emptyBox: { alignItems: 'center', paddingVertical: 40 },
   emptyText: { color: tdsDark.textSecondary, fontSize: 14 },

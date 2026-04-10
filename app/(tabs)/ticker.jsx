@@ -19,16 +19,50 @@ import { Button } from '../../components/tds/Button';
 import { BottomSheet } from '../../components/tds/BottomSheet';
 import { supabase } from '../../lib/supabaseClient';
 import { submitKisOrder } from '../../lib/kisApi';
-import { sampleTickers } from '../../lib/sampleData';
+import { sampleTickers, sampleMarketIndices } from '../../lib/sampleData';
 import { getPriceColor, formatRate, formatPrice } from '../../utils/price';
 
 // ─── 이니셜 뱃지 ──────────────────────────────────────────────────────────────
 
-function InitialBadge({ ticker }) {
+const BADGE_COLORS = ['#3182f6', '#f04452', '#03b26c', '#fe9800', '#8b5cf6', '#06b6d4'];
+
+function InitialBadge({ name, ticker }) {
+  const display = name || ticker || '?';
+  const letter = display[0].toUpperCase();
+  const bg = BADGE_COLORS[display.charCodeAt(0) % BADGE_COLORS.length];
   return (
-    <View style={styles.initialBadge}>
-      <Text style={styles.initialText}>{(ticker || '?')[0]}</Text>
+    <View style={[styles.initialBadge, { backgroundColor: bg }]}>
+      <Text style={styles.initialText}>{letter}</Text>
     </View>
+  );
+}
+
+// ─── 시장 지수 스트립 ─────────────────────────────────────────────────────
+
+function MarketIndexStrip({ indices }) {
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={styles.indexStrip}
+      contentContainerStyle={styles.indexStripContent}
+    >
+      {indices.map((idx) => {
+        const isUp = idx.change >= 0;
+        const color = isUp ? '#f04452' : '#03b26c';
+        return (
+          <View key={idx.key} style={styles.indexCard}>
+            <Text style={styles.indexLabel}>{idx.label}</Text>
+            <Text style={styles.indexValue}>
+              {idx.value.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}
+            </Text>
+            <Text style={[styles.indexChange, { color }]}>
+              {isUp ? '+' : ''}{idx.change.toFixed(1)}%
+            </Text>
+          </View>
+        );
+      })}
+    </ScrollView>
   );
 }
 
@@ -103,7 +137,7 @@ function TickerRow({ item, onBuy }) {
 
   return (
     <ListRow
-      left={<InitialBadge ticker={item.ticker} />}
+      left={<InitialBadge name={item.name} ticker={item.ticker} />}
       title={item.name}
       subtitle={item.ticker}
       right={
@@ -185,6 +219,7 @@ export default function TickerScreen() {
               <Text style={styles.noticeText}>{notice}</Text>
             </View>
           )}
+          <MarketIndexStrip indices={sampleMarketIndices} />
           {tickers.length === 0 ? (
             <View style={styles.center}>
               <Text style={styles.emptyText}>등록된 종목이 없습니다</Text>
@@ -244,11 +279,27 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: tdsDark.bgSecondary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  initialText: { color: tdsDark.textPrimary, fontSize: 16, fontWeight: '700' },
+  initialText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  indexStrip: { flexGrow: 0, marginBottom: 4 },
+  indexStripContent: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4, gap: 10 },
+  indexCard: {
+    backgroundColor: tdsDark.bgCard,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    minWidth: 90,
+    shadowColor: '#000000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  indexLabel: { fontSize: 11, color: tdsDark.textTertiary, marginBottom: 2 },
+  indexValue: { fontSize: 14, fontWeight: '600', color: tdsDark.textPrimary, marginBottom: 2 },
+  indexChange: { fontSize: 12, fontWeight: '600' },
   sheetLabel: { fontSize: 13, color: tdsDark.textSecondary, marginBottom: 4 },
   sheetPrice: { fontSize: 22, fontWeight: '700', color: tdsDark.textPrimary },
   qtyInput: {

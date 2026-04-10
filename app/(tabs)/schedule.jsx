@@ -199,7 +199,35 @@ function SettingsTab() {
           <Text style={styles.noticeText}>{notice}</Text>
         </View>
       )}
-      <Text style={styles.fieldLabel}>시장</Text>
+
+      {/* 현재 설정 요약 카드 */}
+      <View style={styles.activeCard}>
+        <View style={styles.activeCardRow}>
+          <Text style={styles.activeCardTitle}>현재 설정</Text>
+          <Badge
+            color={isActive ? 'blue' : 'orange'}
+            size="small"
+            variant={isActive ? 'fill' : 'weak'}
+          >
+            {isActive ? '실행 중' : '대기'}
+          </Badge>
+        </View>
+        <View style={styles.activeCardInfo}>
+          <Text style={styles.activeCardItem}>
+            {MARKETS.find((m) => m.key === market)?.label ?? market}
+          </Text>
+          <Text style={styles.activeCardSep}>·</Text>
+          <Text style={styles.activeCardItem}>{period}일</Text>
+          <Text style={styles.activeCardSep}>·</Text>
+          <Text style={styles.activeCardItem}>XGBoost</Text>
+          <Text style={styles.activeCardSep}>·</Text>
+          <Text style={styles.activeCardItem}>매수 {Math.round(buyThreshold * 100)}%↑</Text>
+          <Text style={styles.activeCardSep}>·</Text>
+          <Text style={styles.activeCardItem}>매도 {Math.round(sellThreshold * 100)}%↑</Text>
+        </View>
+      </View>
+
+      <Text style={[styles.fieldLabel, { marginTop: 4 }]}>시장</Text>
       <ChipSelector options={MARKETS} value={market} onChange={setMarket} />
 
       <Text style={[styles.fieldLabel, { marginTop: 20 }]}>기간</Text>
@@ -288,6 +316,11 @@ function LogsTab() {
           <Text style={styles.noticeText}>{notice}</Text>
         </View>
       )}
+      <View style={styles.logStats}>
+        <Text style={styles.logStatsText}>
+          전체 {logs.length}건 · 매수 {logs.filter((l) => l.action === 'buy').length}건 · 매도 {logs.filter((l) => l.action === 'sell').length}건
+        </Text>
+      </View>
       {logs.map((log) => (
         <View key={log.id} style={styles.logRow}>
           <View style={styles.logLeft}>
@@ -406,4 +439,32 @@ const styles = StyleSheet.create({
   logMsg: { fontSize: 11, color: tdsDark.textTertiary, maxWidth: 180 },
 
   emptyText: { color: tdsDark.textSecondary, fontSize: 14 },
+
+  activeCard: {
+    backgroundColor: tdsDark.bgCard,
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 20,
+    shadowColor: '#000000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  activeCardRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  activeCardTitle: { fontSize: 14, fontWeight: '600', color: tdsDark.textPrimary },
+  activeCardInfo: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
+  activeCardItem: { fontSize: 13, color: tdsDark.textSecondary },
+  activeCardSep: { fontSize: 13, color: tdsDark.border },
+
+  logStats: {
+    paddingVertical: 10,
+    marginBottom: 4,
+  },
+  logStatsText: { fontSize: 13, color: tdsDark.textSecondary },
 });

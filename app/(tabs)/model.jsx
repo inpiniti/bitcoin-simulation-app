@@ -81,9 +81,16 @@ function SignalBadge({ signal }) {
 function PredictTab() {
   const [market, setMarket] = useState('kospi');
   const [period, setPeriod] = useState(30);
-  const [results, setResults] = useState([]);
+  const [results, setResults] = useState(samplePredictionResults.kospi);
   const [loading, setLoading] = useState(false);
-  const [notice, setNotice] = useState('예측 전에도 화면을 미리 볼 수 있게 샘플 결과를 준비해뒀어요.');
+  const [notice, setNotice] = useState(null);
+
+  // 시장 변경 시 샘플 결과 동기화
+  useEffect(() => {
+    if (!loading) {
+      setResults(samplePredictionResults[market] ?? samplePredictionResults.kospi);
+    }
+  }, [market]);
 
   const handlePredict = useCallback(async () => {
     setLoading(true);
@@ -158,11 +165,12 @@ function PredictTab() {
         loading={loading}
         style={{ marginTop: 24 }}
       >
-        예측하기
+        {results.length > 0 ? '다시 예측하기' : '예측하기'}
       </Button>
 
       {results.length > 0 && (
         <View style={styles.resultCard}>
+          <Text style={styles.resultLabel}>예측 결과</Text>
           {/* 헤더 */}
           <View style={[styles.resultRow, styles.resultHeader]}>
             <Text style={[styles.cell, styles.cellTicker, styles.headerText]}>티커</Text>
@@ -416,6 +424,12 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 6 },
     elevation: 3,
+  },
+  resultLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: tdsDark.textPrimary,
+    marginBottom: 12,
   },
 
   // 예측 결과 테이블
