@@ -21,6 +21,12 @@ import { sampleAccount } from '../../lib/sampleData';
 import useStore from '../../store/useStore';
 import { getPriceColor, formatRate, formatPrice } from '../../utils/price';
 
+function formatSignedPrice(value) {
+  if (value == null) return '-';
+  const sign = value > 0 ? '+' : value < 0 ? '-' : '';
+  return `${sign}${formatPrice(Math.abs(value))}`;
+}
+
 // ─── 스켈레튼 행 ────────────────────────────────────────────────────────────
 
 function SkeletonRow() {
@@ -85,13 +91,33 @@ function PortfolioSummary({ balance, summary }) {
       );
     })();
   const rateColor = getPriceColor(avgRate);
+  const profitAmount =
+    summary?.profitAmount ??
+    (() => {
+      const totalBuy = balance.reduce(
+        (sum, b) => sum + (b.buy_amount_foreign || 0),
+        0,
+      );
+      const totalEval = balance.reduce(
+        (sum, b) => sum + (b.eval_amount_foreign || 0),
+        0,
+      );
+      return totalEval - totalBuy;
+    })();
+  const profitColor = getPriceColor(profitAmount);
+
   return (
     <View style={styles.portfolioCard}>
       <View style={styles.portfolioTopRow}>
         <Text style={styles.portfolioTitle}>{balance.length}종목 보유 중</Text>
-        <Text style={[styles.portfolioAvgRate, { color: rateColor }]}>
-          평균 {formatRate(avgRate)}
-        </Text>
+        <View style={styles.portfolioMetaRight}>
+          <Text style={[styles.portfolioAvgRate, { color: rateColor }]}>
+            평균 {formatRate(avgRate)}
+          </Text>
+          <Text style={[styles.portfolioProfit, { color: profitColor }]}>
+            평가손익 {formatSignedPrice(profitAmount)}
+          </Text>
+        </View>
       </View>
       <View style={styles.portfolioChips}>
         {balance.map((b) => (
@@ -239,28 +265,26 @@ function BalanceCard({ item, onSelect }) {
 
 // ─── 예수금 헤더 ──────────────────────────────────────────────────────────────
 
-function DepositHeader({ deposit, balance, summary }) {
-  const fallbackEvalAmount = balance.reduce(
-    (sum, b) => sum + (b.current_price || b.avg_price || 0) * (b.qty || 0),
-    0,
-  );
-  const evalAmount = summary?.evalAmount ?? fallbackEvalAmount;
-  const total = summary?.totalAsset ?? (deposit + evalAmount);
+function DepositHeader({ deposit, totalAsset }) {
   return (
     <View style={styles.depositSection}>
       <Text style={styles.depositSubLabel}>실 자산</Text>
-      <Text style={styles.depositAmount}>{formatPrice(total)}</Text>
+      <Text style={styles.depositAmount}>{formatPrice(totalAsset)}</Text>
       <View style={styles.depositSubRow}>
         <View>
           <Text style={styles.depositItemLabel}>예수금</Text>
           <Text style={styles.depositItemValue}>{formatPrice(deposit)}</Text>
         </View>
-        <View style={styles.depositVDivider} />
-        <View>
-          <Text style={styles.depositItemLabel}>평가금액</Text>
-          <Text style={styles.depositItemValue}>{formatPrice(evalAmount)}</Text>
-        </View>
       </View>
+    </View>
+  );
+}
+
+function HoldingsHeader({ count, evalAmount }) {
+  return (
+    <View style={styles.holdingsHeader}>
+      <Text style={styles.sectionTitle}>보유잔고 · {count}개</Text>
+      <Text style={styles.holdingsEvalText}>평가금액 {formatPrice(evalAmount)}</Text>
     </View>
   );
 }
@@ -299,40 +323,50 @@ export default function AccountScreen() {
   const [useSampleData, setUseSampleData] = useState(false);
   const [notice, setNotice] = useState(null);
 
-  const load = useCallback(async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true);
-    else setLoading(true);
-    setError(null);
-    if (authMode === 'guest' || authMode === 'locked') {
-      setBalance(sampleAccount.balance);
-      setDeposit(sampleAccount.deposit);
-      setSummary(null);
-      setUseSampleData(true);
-      setNotice('비로그인 모드라서 샘플 계좌 데이터를 보여주고 있어요.');
-      setLoading(false);
-      setRefreshing(false);
-      return;
-    }
-    try {
-      const data = await fetchKisBalance();
-      setBalance(data.balance || []);
-      setDeposit(data.deposit ?? null);
-      setSummary(data.summary ?? null);
-      setUseSampleData(false);
-      setNotice(null);
-    } catch (e) {
-      setBalance(sampleAccount.balance);
-      setDeposit(sampleAccount.deposit);
-      setSummary(null);
-      setUseSampleData(true);
-      setNotice(
-        '연결 전 화면을 미리 보고 있어요. 계좌 정보는 샘플 데이터로 보여주고 있어요.',
-      );
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [authMode]);
+  const fallbackEvalAmount = balance.reduce(
+    (sum, b) => sum + (b.current_price || b.avg_price || 0) * (b.qty || 0),
+    0,
+  );
+  const evalAmount = summary?.evalAmount ?? fallbackEvalAmount;
+  const totalAsset = summary?.totalAsset ?? (deposit ?? 0) + evalAmount;
+
+  const load = useCallback(
+    async (isRefresh = false) => {
+      if (isRefresh) setRefreshing(true);
+      else setLoading(true);
+      setError(null);
+      if (authMode === 'guest' || authMode === 'locked') {
+        setBalance(sampleAccount.balance);
+        setDeposit(sampleAccount.deposit);
+        setSummary(null);
+        setUseSampleData(true);
+        setNotice('비로그인 모드라서 샘플 계좌 데이터를 보여주고 있어요.');
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+      try {
+        const data = await fetchKisBalance();
+        setBalance(data.balance || []);
+        setDeposit(data.deposit ?? null);
+        setSummary(data.summary ?? null);
+        setUseSampleData(false);
+        setNotice(null);
+      } catch (e) {
+        setBalance(sampleAccount.balance);
+        setDeposit(sampleAccount.deposit);
+        setSummary(null);
+        setUseSampleData(true);
+        setNotice(
+          '연결 전 화면을 미리 보고 있어요. 계좌 정보는 샘플 데이터로 보여주고 있어요.',
+        );
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [authMode],
+  );
 
   useEffect(() => {
     load();
@@ -364,11 +398,13 @@ export default function AccountScreen() {
           </View>
         )}
         {deposit != null && (
-          <DepositHeader deposit={deposit} balance={balance} summary={summary} />
+          <DepositHeader deposit={deposit} totalAsset={totalAsset} />
         )}
-        {balance.length > 0 && <PortfolioSummary balance={balance} summary={summary} />}
+        {balance.length > 0 && (
+          <PortfolioSummary balance={balance} summary={summary} />
+        )}
 
-        <Text style={styles.sectionTitle}>보유잔고</Text>
+        <HoldingsHeader count={balance.length} evalAmount={evalAmount} />
         {loading ? (
           <View style={styles.listCard}>
             {[1, 2, 3].map((i) => (
@@ -475,10 +511,9 @@ const styles = StyleSheet.create({
   depositSubRow: {
     flexDirection: 'row',
     marginTop: 16,
-    gap: 24,
+    gap: 12,
     alignItems: 'center',
   },
-  depositVDivider: { width: 1, height: 28, backgroundColor: tdsDark.border },
   depositItemLabel: {
     fontSize: 12,
     color: tdsDark.textTertiary,
@@ -500,7 +535,18 @@ const styles = StyleSheet.create({
     color: tdsDark.textSecondary,
     marginHorizontal: 20,
     marginTop: 20,
+    marginBottom: 6,
+    fontWeight: '600',
+  },
+  holdingsHeader: {
+    marginHorizontal: 0,
+    marginBottom: 4,
+  },
+  holdingsEvalText: {
+    marginHorizontal: 20,
     marginBottom: 8,
+    fontSize: 13,
+    color: tdsDark.textSecondary,
   },
   listCard: {
     marginTop: 4,
@@ -535,7 +581,7 @@ const styles = StyleSheet.create({
   portfolioTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 12,
   },
   portfolioTitle: {
@@ -544,6 +590,8 @@ const styles = StyleSheet.create({
     color: tdsDark.textPrimary,
   },
   portfolioAvgRate: { fontSize: 16, fontWeight: '700' },
+  portfolioMetaRight: { alignItems: 'flex-end', gap: 4 },
+  portfolioProfit: { fontSize: 13, fontWeight: '600' },
   portfolioChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   portfolioChip: {
     flexDirection: 'row',
