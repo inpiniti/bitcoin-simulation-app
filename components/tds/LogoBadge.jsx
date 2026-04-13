@@ -25,6 +25,7 @@ export function LogoBadge({ name, ticker, size = 40 }) {
 
   if (logoUrl && !svgError) {
     return (
+      // overflow: 'hidden' + borderRadius → 원형 클리핑
       <View
         style={[
           styles.badge,
@@ -32,8 +33,8 @@ export function LogoBadge({ name, ticker, size = 40 }) {
         ]}
       >
         <SvgUri
-          width={size - 10}
-          height={size - 10}
+          width={size}
+          height={size}
           uri={logoUrl}
           onError={() => setSvgError(true)}
         />
