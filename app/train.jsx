@@ -189,8 +189,10 @@ export default function TrainScreen() {
           onPress={() => router.back()}
           style={styles.backBtn}
           activeOpacity={0.7}
+          hitSlop={8}
         >
-          <Ionicons name="chevron-back" size={24} color={tdsDark.textPrimary} />
+          <Ionicons name="chevron-back" size={22} color={tdsDark.textPrimary} />
+          <Text style={styles.backText}>뒤로</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>새 모델 학습</Text>
         <View style={styles.headerRight} />
@@ -289,20 +291,21 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 8,
-    paddingVertical: 12,
+    paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: tdsDark.border,
+    backgroundColor: tdsDark.bgPrimary,
   },
-  backBtn: { padding: 8 },
+  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, minWidth: 60 },
+  backText: { fontSize: 15, color: tdsDark.textPrimary },
   headerTitle: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '700',
     color: tdsDark.textPrimary,
   },
-  headerRight: { width: 40 },
+  headerRight: { minWidth: 60 },
 
   content: { padding: 16, paddingBottom: 40 },
 

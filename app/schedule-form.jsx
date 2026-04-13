@@ -240,7 +240,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: tdsDark.border,
-    backgroundColor: tdsDark.bgCard,
+    backgroundColor: tdsDark.bgPrimary,
   },
   backBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, minWidth: 60 },
   backText: { fontSize: 15, color: tdsDark.textPrimary },
