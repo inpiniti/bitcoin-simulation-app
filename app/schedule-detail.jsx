@@ -166,7 +166,7 @@ function WeekCalendar({ activeDates, selectedDate, onDateSelect }) {
 
 // ─── 로그 탭 ──────────────────────────────────────────────────────────────────
 
-function LogsTab({ settingName, activeDates, onActiveDatesChange }) {
+function LogsTab({ settingId, settingName, activeDates, onActiveDatesChange }) {
   const [selectedDate, setSelectedDate] = useState(() => toDateStr(new Date()));
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -176,20 +176,14 @@ function LogsTab({ settingName, activeDates, onActiveDatesChange }) {
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await fetchDlTradeLogs(60);
+        const { data } = await fetchDlTradeLogs(settingId, 60);
         if (data && data.length > 0) {
-          // 클라이언트 사이드 필터: setting_name 일치 또는 전체
-          const filtered = settingName
-            ? data.filter((l) => l.setting_name === settingName)
-            : data;
-          const dates = new Set(filtered.map((l) => l.date).filter(Boolean));
+          const dates = new Set(data.map((l) => l.date).filter(Boolean));
           onActiveDatesChange(dates);
-          // 가장 최신 날짜 선택
           const latest = [...dates].sort().reverse()[0];
           if (latest) setSelectedDate(latest);
-          if (filtered.length === 0) setUseSample(true);
         } else {
-          // 샘플
+          // fallback: 샘플
           const sampleFiltered = sampleDlTradeLogs.filter(
             (l) => !settingName || l.setting_name === settingName
           );
@@ -208,7 +202,7 @@ function LogsTab({ settingName, activeDates, onActiveDatesChange }) {
         setUseSample(true);
       }
     })();
-  }, [settingName]);
+  }, [settingId]);
 
   // 날짜 선택 시 로그 로드
   useEffect(() => {
@@ -222,15 +216,11 @@ function LogsTab({ settingName, activeDates, onActiveDatesChange }) {
           );
           setLogs(filtered);
         } else {
-          const { data } = await fetchDlTradeLogsByDate(selectedDate);
+          const { data } = await fetchDlTradeLogsByDate(selectedDate, settingId);
           if (data && data.length > 0) {
-            // 클라이언트 사이드 필터
-            const filtered = settingName
-              ? data.filter((l) => l.setting_name === settingName)
-              : data;
-            setLogs(filtered);
+            setLogs(data);
           } else {
-            // fallback 샘플
+            // fallback: 샘플
             const filtered = sampleDlTradeLogs.filter(
               (l) => l.date === selectedDate && (!settingName || l.setting_name === settingName)
             );
@@ -243,7 +233,7 @@ function LogsTab({ settingName, activeDates, onActiveDatesChange }) {
         setLoading(false);
       }
     })();
-  }, [selectedDate, settingName, useSample]);
+  }, [selectedDate, settingId, useSample]);
 
   return (
     <View style={{ flex: 1 }}>
@@ -350,7 +340,7 @@ function StatChip({ label, value, color, bold }) {
 
 // ─── 상위 10개 종목 탭 ────────────────────────────────────────────────────────
 
-function TickersTab({ settingName, activeDates, onActiveDatesChange }) {
+function TickersTab({ settingId, settingName, activeDates, onActiveDatesChange }) {
   const [selectedDate, setSelectedDate] = useState(() => toDateStr(new Date()));
   const [tickerData, setTickerData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -360,17 +350,12 @@ function TickersTab({ settingName, activeDates, onActiveDatesChange }) {
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await fetchTopTickersLog(60);
+        const { data } = await fetchTopTickersLog(settingId, 60);
         if (data && data.length > 0) {
-          // 클라이언트 사이드 필터
-          const filtered = settingName
-            ? data.filter((l) => l.setting_name === settingName)
-            : data;
-          const dates = new Set(filtered.map((l) => l.trade_date).filter(Boolean));
+          const dates = new Set(data.map((l) => l.trade_date).filter(Boolean));
           onActiveDatesChange(dates);
           const latest = [...dates].sort().reverse()[0];
           if (latest) setSelectedDate(latest);
-          if (filtered.length === 0) setUseSample(true);
         } else {
           const sampleFiltered = sampleTopTickers.filter(
             (l) => !settingName || l.setting_name === settingName
@@ -385,7 +370,7 @@ function TickersTab({ settingName, activeDates, onActiveDatesChange }) {
         setUseSample(true);
       }
     })();
-  }, [settingName]);
+  }, [settingId]);
 
   // 날짜 선택 시 조회
   useEffect(() => {
@@ -399,13 +384,9 @@ function TickersTab({ settingName, activeDates, onActiveDatesChange }) {
           );
           setTickerData(found ?? null);
         } else {
-          const { data } = await fetchTopTickersByDate(selectedDate);
+          const { data } = await fetchTopTickersByDate(selectedDate, settingId);
           if (data && data.length > 0) {
-            // 클라이언트 사이드 필터
-            const filtered = settingName
-              ? data.filter((l) => l.setting_name === settingName)
-              : data;
-            setTickerData(filtered[0] ?? null);
+            setTickerData(data[0]);
           } else {
             const found = sampleTopTickers.find(
               (l) => l.trade_date === selectedDate && (!settingName || l.setting_name === settingName)
@@ -419,7 +400,7 @@ function TickersTab({ settingName, activeDates, onActiveDatesChange }) {
         setLoading(false);
       }
     })();
-  }, [selectedDate, settingName, useSample]);
+  }, [selectedDate, settingId, useSample]);
 
   return (
     <View style={{ flex: 1 }}>
@@ -559,12 +540,14 @@ export default function ScheduleDetailScreen() {
       <View style={{ flex: 1 }}>
         {activeTab === 'logs' ? (
           <LogsTab
+            settingId={settingId}
             settingName={settingName}
             activeDates={activeDates}
             onActiveDatesChange={setLogActiveDates}
           />
         ) : (
           <TickersTab
+            settingId={settingId}
             settingName={settingName}
             activeDates={activeDates}
             onActiveDatesChange={setTickerActiveDates}
