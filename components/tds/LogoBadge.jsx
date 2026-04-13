@@ -33,8 +33,8 @@ export function LogoBadge({ name, ticker, size = 40 }) {
         ]}
       >
         <SvgUri
-          width={size}
-          height={size}
+          width={size - 8}
+          height={size - 8}
           uri={logoUrl}
           onError={() => setSvgError(true)}
         />
