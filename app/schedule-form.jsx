@@ -19,7 +19,7 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { tdsDark, tdsColors } from '../constants/tdsColors';
-import { createSetting, updateSetting } from '../lib/tradingApi';
+import { createSetting, updateSetting, deleteSettingCascade } from '../lib/tradingApi';
 
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
 
@@ -86,6 +86,7 @@ export default function ScheduleFormScreen() {
 
   const [form, setForm] = useState(DEFAULT_FORM);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // 수정 모드일 때 기존 값 세팅
   useEffect(() => {
@@ -103,6 +104,32 @@ export default function ScheduleFormScreen() {
   }, []);
 
   const set = (key) => (val) => setForm((p) => ({ ...p, [key]: val }));
+
+  const handleDelete = () => {
+    Alert.alert(
+      '설정 삭제',
+      `"${params.settingName}" 설정과 관련 로그(실행 기록, TOP10 종목)를 모두 삭제할까요?\n이 작업은 되돌릴 수 없습니다.`,
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '삭제',
+          style: 'destructive',
+          onPress: async () => {
+            setDeleting(true);
+            try {
+              const { error } = await deleteSettingCascade(params.settingId);
+              if (error) throw new Error(error.message);
+              router.dismissAll();
+            } catch (e) {
+              Alert.alert('삭제 실패', e.message);
+            } finally {
+              setDeleting(false);
+            }
+          },
+        },
+      ],
+    );
+  };
 
   const handleSave = async () => {
     if (!form.name.trim()) {
@@ -222,6 +249,20 @@ export default function ScheduleFormScreen() {
             thumbColor={tdsColors.white}
           />
         </View>
+
+        {/* 삭제 버튼 — 수정 모드에서만 표시 */}
+        {isEdit && (
+          <TouchableOpacity
+            style={styles.deleteBtn}
+            onPress={handleDelete}
+            disabled={deleting}
+            activeOpacity={0.7}
+          >
+            {deleting
+              ? <ActivityIndicator size="small" color={tdsColors.red500} />
+              : <Text style={styles.deleteBtnText}>이 설정 삭제</Text>}
+          </TouchableOpacity>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -292,4 +333,14 @@ const styles = StyleSheet.create({
   },
   toggleLabel: { fontSize: 14, fontWeight: '600', color: tdsDark.textPrimary, marginBottom: 2 },
   toggleSub: { fontSize: 12, color: tdsDark.textTertiary },
+
+  deleteBtn: {
+    marginTop: 40,
+    paddingVertical: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: tdsColors.red500,
+    alignItems: 'center',
+  },
+  deleteBtnText: { fontSize: 15, fontWeight: '600', color: tdsColors.red500 },
 });

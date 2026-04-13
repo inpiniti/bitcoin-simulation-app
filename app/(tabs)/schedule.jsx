@@ -9,21 +9,15 @@ import {
   ScrollView,
   View,
   Text,
-  Switch,
   StyleSheet,
   ActivityIndicator,
   TouchableOpacity,
-  Alert,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { tdsDark, tdsColors } from '../../constants/tdsColors';
 import { Badge } from '../../components/tds/Badge';
-import {
-  fetchSettings,
-  deleteSetting,
-  toggleSetting,
-} from '../../lib/tradingApi';
+import { fetchSettings } from '../../lib/tradingApi';
 import { sampleSettings } from '../../lib/sampleData';
 
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
@@ -53,32 +47,9 @@ const TICKER_GROUP_LABELS = {
 
 // ─── 설정 카드 ────────────────────────────────────────────────────────────────
 
-function SettingCard({ item, onToggle, onDelete, onPress }) {
+function SettingCard({ item, onPress }) {
   const timeLabel  = MARKET_TIME_LABELS[item.execution_time]  ?? item.execution_time;
   const groupLabel = TICKER_GROUP_LABELS[item.ticker_group_key] ?? item.ticker_group_key;
-
-  const handleDelete = () => {
-    Alert.alert('설정 삭제', `"${item.name}"을 삭제할까요?`, [
-      { text: '취소', style: 'cancel' },
-      { text: '삭제', style: 'destructive', onPress: () => onDelete(item.id) },
-    ]);
-  };
-
-  const handleEdit = () => {
-    router.push({
-      pathname: '/schedule-form',
-      params: {
-        settingId:        item.id,
-        settingName:      item.name,
-        execution_time:   item.execution_time,
-        ticker_group_key: item.ticker_group_key,
-        buy_condition:    String(item.buy_condition  ?? 60),
-        sell_condition:   String(item.sell_condition ?? 30),
-        is_active:        String(item.is_active      ?? true),
-        trade_enabled:    String(item.trade_enabled  ?? false),
-      },
-    });
-  };
 
   return (
     <TouchableOpacity style={styles.card} onPress={() => onPress(item)} activeOpacity={0.85}>
@@ -109,20 +80,6 @@ function SettingCard({ item, onToggle, onDelete, onPress }) {
         <Text style={styles.cardCondSep}>·</Text>
         <Text style={styles.cardCond}>매도 {item.sell_condition}% 이하</Text>
       </View>
-
-      {/* 액션 */}
-      <View style={styles.cardActions}>
-        <Switch
-          value={item.is_active}
-          onValueChange={(v) => onToggle(item.id, v)}
-          trackColor={{ false: tdsDark.border, true: tdsColors.blue500 }}
-          thumbColor={tdsColors.white}
-          style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
-        />
-        <TouchableOpacity onPress={handleDelete} style={styles.actionBtn} hitSlop={8}>
-          <Ionicons name="trash-outline" size={18} color={tdsColors.red500} />
-        </TouchableOpacity>
-      </View>
     </TouchableOpacity>
   );
 }
@@ -150,27 +107,6 @@ export default function ScheduleScreen() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
-
-  const handleToggle = async (id, val) => {
-    setSettings((prev) => prev.map((s) => s.id === id ? { ...s, is_active: val } : s));
-    if (useSample) return;
-    try {
-      await toggleSetting(id, val);
-    } catch (e) {
-      Alert.alert('변경 실패', e.message);
-      setSettings((prev) => prev.map((s) => s.id === id ? { ...s, is_active: !val } : s));
-    }
-  };
-
-  const handleDelete = async (id) => {
-    if (useSample) { setSettings((prev) => prev.filter((s) => s.id !== id)); return; }
-    try {
-      await deleteSetting(id);
-      setSettings((prev) => prev.filter((s) => s.id !== id));
-    } catch (e) {
-      Alert.alert('삭제 실패', e.message);
-    }
-  };
 
   const handlePress = (item) => {
     router.push({
@@ -236,8 +172,6 @@ export default function ScheduleScreen() {
               <SettingCard
                 key={item.id}
                 item={item}
-                onToggle={handleToggle}
-                onDelete={handleDelete}
                 onPress={handlePress}
               />
             ))
