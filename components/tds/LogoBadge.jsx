@@ -1,9 +1,6 @@
-/**
- * SvgUri + preserveAspectRatio="xMidYMid slice" (= cover)
- * + overflow:hidden View 원형 클립
- */
+import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { SvgUri } from 'react-native-svg';
+import { Image } from 'expo-image';
 import { getLogoUrl } from '../../lib/logoCache';
 
 const BADGE_COLORS = [
@@ -17,23 +14,20 @@ const BADGE_COLORS = [
 
 export function LogoBadge({ name, ticker, size = 40 }) {
   const url = getLogoUrl(ticker);
+  const [loadFailed, setLoadFailed] = useState(false);
 
-  if (url) {
+  useEffect(() => {
+    setLoadFailed(false);
+  }, [url]);
+
+  if (url && !loadFailed) {
     return (
-      <View
-        style={{
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          overflow: 'hidden',
-          backgroundColor: '#fff',
-        }}
-      >
-        <SvgUri
-          uri={url}
-          width="100%"
-          height="100%"
-          preserveAspectRatio="xMidYMid slice"
+      <View style={[styles.logoWrap, { width: size, height: size, borderRadius: size / 2 }]}>
+        <Image
+          source={{ uri: url }}
+          style={styles.logoImage}
+          contentFit="cover"
+          onError={() => setLoadFailed(true)}
         />
       </View>
     );
@@ -52,6 +46,14 @@ export function LogoBadge({ name, ticker, size = 40 }) {
 }
 
 const styles = StyleSheet.create({
+  logoWrap: {
+    overflow: 'hidden',
+    backgroundColor: '#fff',
+  },
+  logoImage: {
+    width: '100%',
+    height: '100%',
+  },
   badge:  { alignItems: 'center', justifyContent: 'center' },
   letter: { color: '#fff', fontWeight: '700' },
 });
