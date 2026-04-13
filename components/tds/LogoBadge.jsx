@@ -7,10 +7,13 @@
  *     → 원형 보장 / object-fit:contain / 비율 유지
  *  3. 로고 없거나 로드 실패 → 이니셜 배지 폴백
  */
-import { useState, useEffect } from 'react';
+/**
+ * SvgUri + preserveAspectRatio="xMidYMid slice" (= cover)
+ * + overflow:hidden View 원형 클립
+ */
 import { View, Text, StyleSheet } from 'react-native';
-import { SvgXml } from 'react-native-svg';
-import { fetchSvgXml, hasLogo } from '../../lib/logoCache';
+import { SvgUri } from 'react-native-svg';
+import { getLogoUrl } from '../../lib/logoCache';
 
 const BADGE_COLORS = [
   '#3182f6',
@@ -22,19 +25,27 @@ const BADGE_COLORS = [
 ];
 
 export function LogoBadge({ name, ticker, size = 40 }) {
-  const [xml, setXml] = useState(null);
+  const url = getLogoUrl(ticker);
 
-  useEffect(() => {
-    if (!hasLogo(ticker)) return; // 캐시에 없으면 fetch 생략
-    let cancelled = false;
-    fetchSvgXml(ticker, size).then(result => {
-      if (!cancelled) setXml(result);
-    });
-    return () => { cancelled = true; };
-  }, [ticker, size]);
-
-  if (xml) {
-    return <SvgXml xml={xml} width={size} height={size} />;
+  if (url) {
+    return (
+      <View
+        style={{
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          overflow: 'hidden',
+          backgroundColor: '#fff',
+        }}
+      >
+        <SvgUri
+          uri={url}
+          width={size}
+          height={size}
+          preserveAspectRatio="xMidYMid slice"
+        />
+      </View>
+    );
   }
 
   // 이니셜 배지 폴백 (로고 없음 또는 로딩 중)
