@@ -392,11 +392,13 @@ export default function ScheduleScreen() {
           <Text style={styles.headerEyebrow}>예약 · 자동매매</Text>
           <Text style={styles.headerTitle}>자동매매 예약</Text>
         </View>
-        <TouchableOpacity style={styles.addBtn} onPress={handleAdd} activeOpacity={0.8}>
-          <Ionicons name="add" size={18} color={tdsColors.white} />
-          <Text style={styles.addBtnText}>예약</Text>
-        </TouchableOpacity>
       </View>
+
+      {/* + 예약 버튼 (모델 탭과 동일 스타일) */}
+      <TouchableOpacity style={styles.addRow} onPress={handleAdd} activeOpacity={0.7}>
+        <Ionicons name="add-circle-outline" size={18} color={tdsColors.blue500} />
+        <Text style={styles.addRowText}>예약</Text>
+      </TouchableOpacity>
 
       {useSample && (
         <View style={styles.noticeBox}>
@@ -450,26 +452,27 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: tdsDark.bgPrimary },
 
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
     marginHorizontal: 16,
     marginTop: 12,
-    marginBottom: 12,
+    marginBottom: 10,
   },
   headerEyebrow: { fontSize: 12, color: tdsDark.textTertiary, marginBottom: 2 },
-  headerTitle: { fontSize: 26, fontWeight: '800', color: tdsDark.textPrimary, letterSpacing: -0.5 },
+  headerTitle: { fontSize: 28, fontWeight: '800', color: tdsDark.textPrimary, letterSpacing: -0.5 },
 
-  addBtn: {
+  addRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 6,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    paddingVertical: 10,
     paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 999,
-    backgroundColor: tdsColors.blue500,
+    backgroundColor: `${tdsColors.blue500}15`,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: `${tdsColors.blue500}30`,
   },
-  addBtnText: { fontSize: 13, fontWeight: '700', color: tdsColors.white },
+  addRowText: { fontSize: 14, fontWeight: '600', color: tdsColors.blue500 },
 
   noticeBox: {
     marginHorizontal: 16,
