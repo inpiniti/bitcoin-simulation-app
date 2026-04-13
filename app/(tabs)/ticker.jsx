@@ -21,6 +21,7 @@ import { submitKisOrder } from '../../lib/kisApi';
 import { sampleTickers, sampleMarketIndices } from '../../lib/sampleData';
 import useStore from '../../store/useStore';
 import { getPriceColor, formatRate, formatPrice } from '../../utils/price';
+import { LogoBadge } from '../../components/tds/LogoBadge';
 
 // ─── 스켈레튼 행 ────────────────────────────────────────────────────────────
 
@@ -36,28 +37,6 @@ function SkeletonRow() {
         <View style={[styles.skeletonLine, { width: 52 }]} />
         <View style={[styles.skeletonLine, { width: 40, marginTop: 8 }]} />
       </View>
-    </View>
-  );
-}
-
-// ─── 이니셜 뱃지 ──────────────────────────────────────────────────────────────
-
-const BADGE_COLORS = [
-  '#3182f6',
-  '#f04452',
-  '#03b26c',
-  '#fe9800',
-  '#8b5cf6',
-  '#06b6d4',
-];
-
-function InitialBadge({ name, ticker }) {
-  const display = name || ticker || '?';
-  const letter = display[0].toUpperCase();
-  const bg = BADGE_COLORS[display.charCodeAt(0) % BADGE_COLORS.length];
-  return (
-    <View style={[styles.initialBadge, { backgroundColor: bg }]}>
-      <Text style={styles.initialText}>{letter}</Text>
     </View>
   );
 }
@@ -211,7 +190,7 @@ function TickerRow({ item, onPress }) {
   return (
     <ListRow
       onPress={() => onPress(item)}
-      left={<InitialBadge name={item.name} ticker={item.ticker} />}
+      left={<LogoBadge name={item.name} ticker={item.ticker} size={40} />}
       title={item.name}
       subtitle={item.ticker}
       right={
@@ -441,14 +420,6 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     backgroundColor: '#e8ecef',
   },
-  initialBadge: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  initialText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   indexStrip: { flexGrow: 0, marginBottom: 4 },
   indexStripContent: {
     paddingHorizontal: 16,

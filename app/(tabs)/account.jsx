@@ -20,6 +20,7 @@ import { fetchKisBalance, submitKisOrder } from '../../lib/kisApi';
 import { sampleAccount } from '../../lib/sampleData';
 import useStore from '../../store/useStore';
 import { getPriceColor, formatRate, formatPrice } from '../../utils/price';
+import { LogoBadge } from '../../components/tds/LogoBadge';
 
 function formatSignedPrice(value) {
   if (value == null) return '-';
@@ -41,28 +42,6 @@ function SkeletonRow() {
         <View style={[styles.skeletonLine, { width: 56 }]} />
         <View style={[styles.skeletonLine, { width: 48, marginTop: 8 }]} />
       </View>
-    </View>
-  );
-}
-
-// ─── 이니셜 뱃지 ──────────────────────────────────────────────────────────────
-
-const BADGE_COLORS = [
-  '#3182f6',
-  '#f04452',
-  '#03b26c',
-  '#fe9800',
-  '#8b5cf6',
-  '#06b6d4',
-];
-
-function InitialBadge({ name, ticker }) {
-  const display = name || ticker || '?';
-  const letter = display[0].toUpperCase();
-  const bg = BADGE_COLORS[display.charCodeAt(0) % BADGE_COLORS.length];
-  return (
-    <View style={[styles.initialBadge, { backgroundColor: bg }]}>
-      <Text style={styles.initialText}>{letter}</Text>
     </View>
   );
 }
@@ -234,7 +213,7 @@ function BalanceCard({ item, onSelect }) {
   return (
     <ListRow
       onPress={() => onSelect(item)}
-      left={<InitialBadge name={item.name} ticker={item.ticker} />}
+      left={<LogoBadge name={item.name} ticker={item.ticker} size={44} />}
       title={item.name}
       subtitle={item.ticker}
       right={
@@ -550,15 +529,6 @@ const styles = StyleSheet.create({
   rightBlock: { alignItems: 'flex-end' },
   rateText: { fontSize: 15, fontWeight: '700' },
   priceSmall: { fontSize: 12, color: tdsDark.textSecondary, marginTop: 2 },
-
-  initialBadge: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  initialText: { color: '#fff', fontSize: 17, fontWeight: '700' },
 
   portfolioCard: {
     marginHorizontal: 16,

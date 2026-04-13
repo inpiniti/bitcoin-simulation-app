@@ -1,8 +1,12 @@
 import '../global.css';
+import { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { initLogoCache } from '../lib/logoCache';
 
 export default function RootLayout() {
+  useEffect(() => { initLogoCache(); }, []);
+
   return (
     <>
       <StatusBar style="light" backgroundColor="#1e1e1e" />
