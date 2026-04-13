@@ -1,6 +1,13 @@
 import { useEffect, useRef } from 'react';
 import { useRouter, Redirect } from 'expo-router';
-import { Animated, Easing, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import {
+  Animated,
+  Easing,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { tdsColors, tdsDark } from '../constants/tdsColors';
 import useStore from '../store/useStore';
 

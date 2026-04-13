@@ -119,9 +119,6 @@ function SettingCard({ item, onToggle, onDelete, onPress }) {
           thumbColor={tdsColors.white}
           style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
         />
-        <TouchableOpacity onPress={handleEdit} style={styles.actionBtn} hitSlop={8}>
-          <Ionicons name="create-outline" size={18} color={tdsDark.textSecondary} />
-        </TouchableOpacity>
         <TouchableOpacity onPress={handleDelete} style={styles.actionBtn} hitSlop={8}>
           <Ionicons name="trash-outline" size={18} color={tdsColors.red500} />
         </TouchableOpacity>
@@ -179,9 +176,15 @@ export default function ScheduleScreen() {
     router.push({
       pathname: '/schedule-detail',
       params: {
-        settingId:   item.id,
-        settingName: item.name,
-        targetGroup: item.ticker_group_key,
+        settingId:        item.id,
+        settingName:      item.name,
+        targetGroup:      item.ticker_group_key,
+        execution_time:   item.execution_time,
+        ticker_group_key: item.ticker_group_key,
+        buy_condition:    String(item.buy_condition  ?? 60),
+        sell_condition:   String(item.sell_condition ?? 30),
+        is_active:        String(item.is_active      ?? true),
+        trade_enabled:    String(item.trade_enabled  ?? false),
       },
     });
   };

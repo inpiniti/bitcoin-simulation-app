@@ -126,7 +126,7 @@ export default function ScheduleFormScreen() {
       } else {
         await createSetting(payload);
       }
-      router.back();
+      Alert.alert('저장되었습니다.', '', [{ text: '확인', onPress: () => router.back() }]);
     } catch (e) {
       Alert.alert('저장 실패', e.message);
     } finally {

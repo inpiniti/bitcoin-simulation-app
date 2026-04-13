@@ -485,7 +485,12 @@ function TickerCard({ data }) {
 // ─── 메인 ─────────────────────────────────────────────────────────────────────
 
 export default function ScheduleDetailScreen() {
-  const { settingId, settingName, targetGroup } = useLocalSearchParams();
+  const {
+    settingId, settingName, targetGroup,
+    execution_time, ticker_group_key,
+    buy_condition, sell_condition,
+    is_active, trade_enabled,
+  } = useLocalSearchParams();
   const [activeTab, setActiveTab] = useState('logs');
   const [logActiveDates, setLogActiveDates] = useState(new Set());
   const [tickerActiveDates, setTickerActiveDates] = useState(new Set());
@@ -507,7 +512,17 @@ export default function ScheduleDetailScreen() {
         <TouchableOpacity
           style={styles.editBtn}
           onPress={() => router.push({
-            pathname: '/schedule',
+            pathname: '/schedule-form',
+            params: {
+              settingId,
+              settingName,
+              execution_time,
+              ticker_group_key,
+              buy_condition,
+              sell_condition,
+              is_active,
+              trade_enabled,
+            },
           })}
           hitSlop={8}
         >
