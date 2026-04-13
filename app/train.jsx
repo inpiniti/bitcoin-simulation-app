@@ -1,7 +1,7 @@
 /**
  * 학습 화면 — 새 XGBoost 모델 학습
- * 탭바 없이 stack으로 push되는 화면
- * 완료 후 router.back() → 모델 목록 자동 새로고침
+ * 단일 종목 / 그룹 선택 모드 지원
+ * 마운트 시 서버 상태 폴링으로 진행 중인 학습 복원
  */
 import { useState, useCallback, useEffect, useRef } from 'react';
 import {
@@ -9,6 +9,7 @@ import {
   ScrollView,
   View,
   Text,
+  TextInput,
   StyleSheet,
   TouchableOpacity,
 } from 'react-native';
@@ -16,26 +17,48 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { tdsDark, tdsColors } from '../constants/tdsColors';
 import { Button } from '../components/tds/Button';
-import { WS_TRAIN_URL } from '../lib/xgbApi';
-import { sampleTrainingTimeline } from '../lib/sampleData';
+import { WS_TRAIN_URL, fetchTrainStatus } from '../lib/xgbApi';
 
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
 
-const MARKETS = [
-  { key: 'kospi', label: 'KOSPI' },
-  { key: 'kosdaq', label: 'KOSDAQ' },
-  { key: 'nasdaq', label: 'NASDAQ' },
-  { key: 'nyse', label: 'NYSE' },
+// 백엔드 data_collector.py fetch_tickers_for_group()에 정의된 유효 그룹 키
+const GROUPS = [
+  { key: 'sp500',     label: 'S&P 500' },
+  { key: 'qqq',       label: 'Nasdaq 100 (QQQ)' },
+  { key: 'usall',     label: '미국 전체 (Nasdaq+NYSE)' },
+  { key: 'kospi200',  label: 'KOSPI 200' },
+  { key: 'kosdaq150', label: 'KOSDAQ 150' },
 ];
 
 const PERIODS = [
-  { key: 7, label: '7일' },
-  { key: 14, label: '14일' },
-  { key: 30, label: '30일' },
-  { key: 60, label: '60일' },
+  { key: 30,  label: '30일' },
+  { key: 90,  label: '90일' },
+  { key: 180, label: '180일' },
+  { key: 365, label: '1년' },
 ];
 
-// ─── 셀렉터 ────────────────────────────────────────────────────────────────────
+// ─── 모드 탭 ──────────────────────────────────────────────────────────────────
+
+function ModeTab({ mode, onChange, disabled }) {
+  return (
+    <View style={styles.modeRow}>
+      {['single', 'group'].map((m) => (
+        <TouchableOpacity
+          key={m}
+          style={[styles.modeBtn, mode === m && styles.modeBtnActive]}
+          onPress={() => !disabled && onChange(m)}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.modeBtnText, mode === m && styles.modeBtnTextActive]}>
+            {m === 'single' ? '단일 종목' : '그룹'}
+          </Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}
+
+// ─── 칩 셀렉터 ────────────────────────────────────────────────────────────────
 
 function ChipSelector({ options, value, onChange, disabled }) {
   return (
@@ -59,138 +82,184 @@ function ChipSelector({ options, value, onChange, disabled }) {
   );
 }
 
-// ─── 메인 ────────────────────────────────────────────────────────────────────
+// ─── 진행 바 ──────────────────────────────────────────────────────────────────
+
+function ProgressBar({ label, progress, color }) {
+  return (
+    <View style={styles.progressRow}>
+      <Text style={styles.progressLabel}>{label}</Text>
+      <View style={styles.progressTrack}>
+        <View style={[styles.progressFill, { width: `${progress}%`, backgroundColor: color }]} />
+      </View>
+      <Text style={styles.progressPct}>{progress}%</Text>
+    </View>
+  );
+}
+
+// ─── 메인 ─────────────────────────────────────────────────────────────────────
 
 export default function TrainScreen() {
   const router = useRouter();
-  const [market, setMarket] = useState('kospi');
-  const [period, setPeriod] = useState(30);
+
+  // 선택 상태
+  const [mode, setMode] = useState('group');   // 'single' | 'group'
+  const [ticker, setTicker] = useState('AAPL');
+  const [group, setGroup] = useState('sp500');
+  const [period, setPeriod] = useState(365);
+
+  // 학습 상태
   const [isTraining, setIsTraining] = useState(false);
   const [collectProgress, setCollectProgress] = useState(0);
   const [trainProgress, setTrainProgress] = useState(0);
   const [logs, setLogs] = useState([]);
   const [done, setDone] = useState(false);
+  const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
+
   const wsRef = useRef(null);
-  const timerRef = useRef(null);
   const doneRef = useRef(false);
 
-  const stopTimer = useCallback(() => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
+  // ── 마운트 시 서버 상태 복원 ──────────────────────────────────────────────
+  useEffect(() => {
+    (async () => {
+      try {
+        const job = await fetchTrainStatus();
+        if (job.status === 'collecting' || job.status === 'training') {
+          setIsTraining(true);
+          setCollectProgress(job.collect_progress ?? 0);
+          setTrainProgress(job.train_progress ?? 0);
+          setLogs([`[복원] 서버에서 학습 중: ${job.model_name || ''}`]);
+          // 기존 학습이 진행 중이면 WebSocket 재연결 시도
+          connectWs({ reconnect: true, serverModelName: job.model_name });
+        } else if (job.status === 'complete' && job.result) {
+          setDone(true);
+          setCollectProgress(100);
+          setTrainProgress(100);
+          setNotice(`최근 완료된 모델: ${job.model_name || ''}`);
+        }
+      } catch (_) {
+        // 서버 연결 불가 — 조용히 무시
+      }
+    })();
   }, []);
 
-  const startSampleTraining = useCallback(() => {
-    stopTimer();
-    setNotice('학습 서버 연결 전이라서 샘플 학습 로그를 보여주고 있어요.');
-    let index = 0;
-    timerRef.current = setInterval(() => {
-      const step = sampleTrainingTimeline[index];
-      if (!step || index >= sampleTrainingTimeline.length) {
-        stopTimer();
-        setIsTraining(false);
-        setDone(true);
-        doneRef.current = true;
-        return;
-      }
-      setCollectProgress(step.collect);
-      setTrainProgress(step.train);
-      setLogs((prev) => [...prev, step.log]);
-      index += 1;
-      if (index >= sampleTrainingTimeline.length) {
-        stopTimer();
-        setIsTraining(false);
-        setDone(true);
-        doneRef.current = true;
-      }
-    }, 550);
-  }, [stopTimer]);
-
-  const startTrain = useCallback(() => {
-    if (isTraining) return;
-    setIsTraining(true);
-    setCollectProgress(0);
-    setTrainProgress(0);
-    setLogs([]);
-    setDone(false);
-    doneRef.current = false;
-    setNotice(null);
-
+  // ── WebSocket 연결 ────────────────────────────────────────────────────────
+  const connectWs = useCallback(({ reconnect = false, serverModelName } = {}) => {
     try {
       const ws = new WebSocket(WS_TRAIN_URL);
       wsRef.current = ws;
 
       ws.onopen = () => {
-        ws.send(
-          JSON.stringify({
-            group: market,
-            period: period * 30,
-            modelName: `XGB_${market}_${period}d`,
-          }),
-        );
-        setLogs(['서버 연결됨. 학습을 시작하고 있어요.']);
+        if (reconnect) {
+          // 재연결 시에는 새 학습을 시작하지 않음 — 상태만 수신
+          return;
+        }
+        const isGroup = mode === 'group';
+        const modelName = isGroup
+          ? `XGB_${group}_${period}d`
+          : `XGB_${ticker.toUpperCase()}_${period}d`;
+
+        ws.send(JSON.stringify({
+          group: isGroup ? group : undefined,
+          ticker: !isGroup ? ticker.trim().toUpperCase() : undefined,
+          period,                   // 일수 그대로 전송 (30, 90, 180, 365)
+          modelName,
+        }));
+        setLogs(['서버에 연결됐어요. 학습을 시작하고 있어요.']);
       };
 
       ws.onmessage = (e) => {
         try {
           const msg = JSON.parse(e.data);
           if (msg.type === 'collection') {
-            setCollectProgress(msg.progress ?? 0);
-            setLogs((prev) => [...prev, `[수집] ${msg.progress ?? 0}%`]);
+            const p = msg.progress ?? 0;
+            setCollectProgress(p);
+            if (p % 10 === 0 || p === 100) {
+              setLogs((prev) => [...prev, `[수집] ${p}%`]);
+            }
           } else if (msg.type === 'training') {
-            setTrainProgress(msg.progress ?? 0);
-            setLogs((prev) => [...prev, `[학습] ${msg.progress ?? 0}%`]);
+            const p = msg.progress ?? 0;
+            setTrainProgress(p);
+            if (p % 20 === 0 || p === 100) {
+              setLogs((prev) => [...prev, `[학습] ${p}%`]);
+            }
           } else if (msg.type === 'complete') {
             doneRef.current = true;
             setDone(true);
             setIsTraining(false);
             setCollectProgress(100);
             setTrainProgress(100);
-            setLogs((prev) => [...prev, '학습을 마쳤어요.']);
-            setNotice('모델 학습이 완료됐어요. 저장되었습니다.');
+            setLogs((prev) => [...prev, '학습 완료! 모델이 저장됐어요.']);
+            setNotice('학습이 완료됐어요. 모델 목록에서 확인하세요.');
             ws.close();
           } else if (msg.type === 'error') {
+            const errMsg = msg.message || '알 수 없는 오류';
+            setError(`서버 오류: ${errMsg}`);
+            setIsTraining(false);
+            setLogs((prev) => [...prev, `[오류] ${errMsg}`]);
             ws.close();
-            startSampleTraining();
           }
         } catch (_) {
-          startSampleTraining();
+          // JSON 파싱 실패 무시
         }
       };
 
       ws.onerror = () => {
-        startSampleTraining();
+        setError('서버에 연결할 수 없어요. 잠시 후 다시 시도해주세요.');
+        setIsTraining(false);
       };
 
       ws.onclose = () => {
-        if (!doneRef.current && !timerRef.current) {
-          setIsTraining(false);
+        if (!doneRef.current) {
+          // 예기치 않게 끊긴 경우
+          if (isTraining) {
+            setIsTraining(false);
+          }
         }
       };
     } catch (_) {
-      startSampleTraining();
+      setError('WebSocket 연결에 실패했어요.');
+      setIsTraining(false);
     }
-  }, [market, period, isTraining, startSampleTraining]);
+  }, [mode, ticker, group, period]);
 
+  // ── 학습 시작 ─────────────────────────────────────────────────────────────
+  const startTrain = useCallback(() => {
+    if (isTraining) return;
+
+    // 단일 종목 모드 입력값 검증
+    if (mode === 'single' && !ticker.trim()) {
+      setError('종목 코드를 입력해주세요. (예: AAPL, BTC-USD)');
+      return;
+    }
+
+    setIsTraining(true);
+    setCollectProgress(0);
+    setTrainProgress(0);
+    setLogs([]);
+    setDone(false);
+    setError(null);
+    setNotice(null);
+    doneRef.current = false;
+
+    connectWs();
+  }, [isTraining, mode, ticker, connectWs]);
+
+  // ── 언마운트 정리 ─────────────────────────────────────────────────────────
   useEffect(() => {
-    return () => {
-      wsRef.current?.close();
-      stopTimer();
-    };
-  }, [stopTimer]);
+    return () => { wsRef.current?.close(); };
+  }, []);
+
+  // ── 모델 이름 미리보기 ────────────────────────────────────────────────────
+  const previewName = mode === 'group'
+    ? `XGB_${group}_${period}d`
+    : `XGB_${(ticker || 'AAPL').toUpperCase()}_${period}d`;
 
   return (
     <SafeAreaView style={styles.safe}>
-      {/* 상단 헤더 */}
+      {/* 헤더 */}
       <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.backBtn}
-          activeOpacity={0.7}
-          hitSlop={8}
-        >
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
           <Ionicons name="chevron-back" size={22} color={tdsDark.textPrimary} />
           <Text style={styles.backText}>뒤로</Text>
         </TouchableOpacity>
@@ -199,21 +268,55 @@ export default function TrainScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
+
+        {/* 안내 / 에러 */}
         {notice && (
           <View style={styles.noticeBox}>
             <Text style={styles.noticeText}>{notice}</Text>
           </View>
         )}
+        {error && (
+          <View style={styles.errorBox}>
+            <Ionicons name="alert-circle-outline" size={16} color={tdsColors.red500} />
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        )}
 
-        <Text style={styles.fieldLabel}>시장</Text>
-        <ChipSelector
-          options={MARKETS}
-          value={market}
-          onChange={setMarket}
-          disabled={isTraining}
-        />
+        {/* 모드 선택 */}
+        <Text style={styles.fieldLabel}>학습 대상</Text>
+        <ModeTab mode={mode} onChange={setMode} disabled={isTraining} />
 
-        <Text style={[styles.fieldLabel, { marginTop: 16 }]}>기간</Text>
+        {/* 단일 종목 입력 */}
+        {mode === 'single' && (
+          <View style={{ marginTop: 12 }}>
+            <Text style={styles.fieldLabel}>종목 코드</Text>
+            <TextInput
+              style={[styles.textInput, isTraining && styles.inputDisabled]}
+              value={ticker}
+              onChangeText={setTicker}
+              placeholder="예: AAPL, TSLA, BTC-USD"
+              placeholderTextColor={tdsDark.textTertiary}
+              autoCapitalize="characters"
+              editable={!isTraining}
+            />
+          </View>
+        )}
+
+        {/* 그룹 선택 */}
+        {mode === 'group' && (
+          <View style={{ marginTop: 12 }}>
+            <Text style={styles.fieldLabel}>티커 그룹</Text>
+            <ChipSelector
+              options={GROUPS}
+              value={group}
+              onChange={setGroup}
+              disabled={isTraining}
+            />
+          </View>
+        )}
+
+        {/* 기간 선택 */}
+        <Text style={[styles.fieldLabel, { marginTop: 20 }]}>학습 데이터 기간</Text>
         <ChipSelector
           options={PERIODS}
           value={period}
@@ -221,6 +324,13 @@ export default function TrainScreen() {
           disabled={isTraining}
         />
 
+        {/* 모델 이름 미리보기 */}
+        <View style={styles.previewRow}>
+          <Text style={styles.previewLabel}>모델 이름</Text>
+          <Text style={styles.previewValue}>{previewName}</Text>
+        </View>
+
+        {/* 학습 버튼 */}
         <Button
           onPress={startTrain}
           display="full"
@@ -230,49 +340,25 @@ export default function TrainScreen() {
           {isTraining ? '학습 중...' : done ? '다시 학습하기' : '학습하기'}
         </Button>
 
+        {/* 완료 버튼 */}
         {done && (
-          <TouchableOpacity
-            style={styles.doneBtn}
-            onPress={() => router.back()}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.doneBtnText}>완료</Text>
+          <TouchableOpacity style={styles.doneBtn} onPress={() => router.back()} activeOpacity={0.8}>
+            <Text style={styles.doneBtnText}>완료 — 모델 목록으로</Text>
           </TouchableOpacity>
         )}
 
+        {/* 진행 상황 */}
         {(isTraining || done) && (
           <View style={styles.resultCard}>
-            <View style={styles.progressRow}>
-              <Text style={styles.progressLabel}>수집</Text>
-              <View style={styles.progressTrack}>
-                <View
-                  style={[styles.progressFill, { width: `${collectProgress}%` }]}
-                />
-              </View>
-              <Text style={styles.progressPct}>{collectProgress}%</Text>
-            </View>
-            <View style={[styles.progressRow, { marginTop: 10 }]}>
-              <Text style={styles.progressLabel}>학습</Text>
-              <View style={styles.progressTrack}>
-                <View
-                  style={[
-                    styles.progressFill,
-                    {
-                      width: `${trainProgress}%`,
-                      backgroundColor: tdsColors.green400,
-                    },
-                  ]}
-                />
-              </View>
-              <Text style={styles.progressPct}>{trainProgress}%</Text>
+            <ProgressBar label="수집" progress={collectProgress} color={tdsColors.blue500} />
+            <View style={{ marginTop: 10 }}>
+              <ProgressBar label="학습" progress={trainProgress} color={tdsColors.green400} />
             </View>
 
             {logs.length > 0 && (
               <View style={styles.logsBox}>
-                {logs.slice(-30).map((line, i) => (
-                  <Text key={i} style={styles.logLine}>
-                    {line}
-                  </Text>
+                {logs.slice(-40).map((line, i) => (
+                  <Text key={i} style={styles.logLine}>{line}</Text>
                 ))}
               </View>
             )}
@@ -300,14 +386,10 @@ const styles = StyleSheet.create({
   },
   backBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, minWidth: 60 },
   backText: { fontSize: 15, color: tdsDark.textPrimary },
-  headerTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: tdsDark.textPrimary,
-  },
+  headerTitle: { fontSize: 16, fontWeight: '700', color: tdsDark.textPrimary },
   headerRight: { minWidth: 60 },
 
-  content: { padding: 16, paddingBottom: 40 },
+  content: { padding: 16, paddingBottom: 48 },
 
   noticeBox: {
     marginBottom: 16,
@@ -318,11 +400,55 @@ const styles = StyleSheet.create({
   },
   noticeText: { fontSize: 13, lineHeight: 19, color: tdsColors.blue700 },
 
+  errorBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginBottom: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: `${tdsColors.red500}15`,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: `${tdsColors.red500}40`,
+  },
+  errorText: { flex: 1, fontSize: 13, lineHeight: 19, color: tdsColors.red500 },
+
   fieldLabel: { fontSize: 13, color: tdsDark.textSecondary, marginBottom: 8 },
+
+  modeRow: {
+    flexDirection: 'row',
+    backgroundColor: tdsDark.bgCard,
+    borderRadius: 12,
+    padding: 3,
+    gap: 3,
+  },
+  modeBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  modeBtnActive: { backgroundColor: tdsColors.blue500 },
+  modeBtnText: { fontSize: 14, fontWeight: '600', color: tdsDark.textSecondary },
+  modeBtnTextActive: { color: '#fff' },
+
+  textInput: {
+    backgroundColor: tdsDark.bgCard,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    fontSize: 15,
+    color: tdsDark.textPrimary,
+    borderWidth: 1,
+    borderColor: tdsDark.border,
+  },
+  inputDisabled: { opacity: 0.5 },
+
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
     paddingHorizontal: 14,
-    paddingVertical: 11,
+    paddingVertical: 10,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: tdsDark.border,
@@ -332,8 +458,21 @@ const styles = StyleSheet.create({
     borderColor: tdsColors.blue500,
     backgroundColor: `${tdsColors.blue500}22`,
   },
-  chipText: { fontSize: 14, color: tdsDark.textSecondary },
+  chipText: { fontSize: 13, color: tdsDark.textSecondary },
   chipTextActive: { color: tdsColors.blue500, fontWeight: '600' },
+
+  previewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: tdsDark.bgCard,
+    borderRadius: 12,
+    gap: 10,
+  },
+  previewLabel: { fontSize: 12, color: tdsDark.textTertiary, flexShrink: 0 },
+  previewValue: { fontSize: 13, color: tdsDark.textSecondary, fontFamily: 'monospace', flex: 1 },
 
   doneBtn: {
     marginTop: 8,
@@ -359,29 +498,20 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     overflow: 'hidden',
   },
-  progressFill: {
-    height: '100%',
-    backgroundColor: tdsColors.blue500,
-    borderRadius: 3,
-  },
-  progressPct: {
-    width: 38,
-    textAlign: 'right',
-    fontSize: 12,
-    color: tdsDark.textSecondary,
-  },
+  progressFill: { height: '100%', borderRadius: 3 },
+  progressPct: { width: 38, textAlign: 'right', fontSize: 12, color: tdsDark.textSecondary },
 
   logsBox: {
     marginTop: 16,
     backgroundColor: tdsDark.bgSecondary,
-    borderRadius: 16,
+    borderRadius: 12,
     padding: 10,
-    maxHeight: 200,
   },
   logLine: {
     fontSize: 11,
     color: tdsDark.textSecondary,
     fontFamily: 'monospace',
     marginBottom: 2,
+    lineHeight: 16,
   },
 });
