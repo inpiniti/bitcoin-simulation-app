@@ -1,5 +1,6 @@
 /**
- * 예약 탭 — 자동매매 설정 + 실행 로그
+ * 예약 탭 — 자동매매 설정 목록
+ * 설정을 선택하면 /schedule-detail 로 이동 (로그 + 상위 10개 종목)
  */
 import { useState, useCallback, useEffect } from 'react';
 import {
@@ -12,408 +13,433 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   Alert,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
+import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { tdsDark, tdsColors } from '../../constants/tdsColors';
-import { SegmentControl } from '../../components/tds/SegmentControl';
-import { Button } from '../../components/tds/Button';
 import { Badge } from '../../components/tds/Badge';
+import { Button } from '../../components/tds/Button';
 import {
   fetchSettings,
-  updateSetting,
   createSetting,
+  updateSetting,
+  deleteSetting,
   toggleSetting,
-  fetchTradeLogs,
 } from '../../lib/tradingApi';
-import { sampleSettings, sampleTradeLogs } from '../../lib/sampleData';
+import { sampleSettings } from '../../lib/sampleData';
 
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
 
-const TABS = [
-  { key: 'settings', label: '설정' },
-  { key: 'logs', label: '로그' },
-];
+const MARKET_TIME_LABELS = {
+  market_open:       '장 시작 (9:30 ET)',
+  market_open_30m:   '장 시작 30분 후 (10:00 ET)',
+  market_open_1h:    '장 시작 1시간 후 (10:30 ET)',
+  market_close_2h:   '장 마감 2시간 전 (14:00 ET)',
+  market_close_1h:   '장 마감 1시간 전 (15:00 ET)',
+  market_close_30m:  '장 마감 30분 전 (15:30 ET)',
+  market_close:      '장 마감 (16:00 ET)',
+};
 
-const MARKETS = [
-  { key: 'kospi', label: 'KOSPI' },
-  { key: 'kosdaq', label: 'KOSDAQ' },
-  { key: 'nasdaq', label: 'NASDAQ' },
-  { key: 'nyse', label: 'NYSE' },
-];
+const TICKER_GROUP_LABELS = {
+  usall:        'US 나스닥+뉴욕 전체',
+  sp500:        'S&P 500',
+  qqq:          'QQQ (나스닥100)',
+  nasdaq100:    '나스닥100',
+  superinvestor:'슈퍼인베스터',
+  myholdings:   '보유종목',
+  kospi:        'KOSPI',
+  kosdaq:       'KOSDAQ',
+  nasdaq:       'NASDAQ',
+  nyse:         'NYSE',
+};
 
-const PERIODS = [
-  { key: 7, label: '7일' },
-  { key: 14, label: '14일' },
-  { key: 30, label: '30일' },
-  { key: 60, label: '60일' },
-];
+const DEFAULT_FORM = {
+  name: '',
+  execution_time: 'market_close_1h',
+  ticker_group_key: 'usall',
+  buy_condition: '60',
+  sell_condition: '30',
+  is_active: true,
+  trade_enabled: false,
+};
 
-const THRESHOLDS = [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8];
+const EXECUTION_TIMES = Object.entries(MARKET_TIME_LABELS).map(([key, label]) => ({ key, label }));
+const TICKER_GROUPS = Object.entries(TICKER_GROUP_LABELS).map(([key, label]) => ({ key, label }));
 
-function ScreenHeader() {
-  return (
-    <View style={styles.screenHeader}>
-      <View>
-        <Text style={styles.headerEyebrow}>예약 · 자동매매</Text>
-        <Text style={styles.headerTitle}>자동매매 예약</Text>
-        <Text style={styles.headerSub}>
-          설정 상태와 실행 로그를 함께 관리해요
-        </Text>
-      </View>
-      <View style={styles.headerPill}>
-        <Text style={styles.headerPillText}>스케줄</Text>
-      </View>
-    </View>
-  );
-}
+// ─── 설정 폼 모달 ─────────────────────────────────────────────────────────────
 
-// ─── 셀렉터 ────────────────────────────────────────────────────────────────────
-
-function ChipSelector({ options, value, onChange, disabled }) {
-  return (
-    <View style={styles.chipRow}>
-      {options.map((opt) => {
-        const active = opt.key === value;
-        return (
-          <TouchableOpacity
-            key={String(opt.key)}
-            onPress={() => !disabled && onChange(opt.key)}
-            style={[styles.chip, active && styles.chipActive]}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.chipText, active && styles.chipTextActive]}>
-              {opt.label}
-            </Text>
-          </TouchableOpacity>
-        );
-      })}
-    </View>
-  );
-}
-
-// ─── 임계값 셀렉터 ────────────────────────────────────────────────────────────
-
-function ThresholdSelector({ value, onChange }) {
-  return (
-    <View style={styles.chipRow}>
-      {THRESHOLDS.map((t) => {
-        const active = value === t;
-        return (
-          <TouchableOpacity
-            key={t}
-            onPress={() => onChange(t)}
-            style={[styles.chip, active && styles.chipActive]}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.chipText, active && styles.chipTextActive]}>
-              {Math.round(t * 100)}%
-            </Text>
-          </TouchableOpacity>
-        );
-      })}
-    </View>
-  );
-}
-
-// ─── 설정 서브탭 ──────────────────────────────────────────────────────────────
-
-function SettingsTab() {
-  const [market, setMarket] = useState('kospi');
-  const [period, setPeriod] = useState(30);
-  const [buyThreshold, setBuyThreshold] = useState(0.7);
-  const [sellThreshold, setSellThreshold] = useState(0.6);
-  const [isActive, setIsActive] = useState(false);
-  const [settingId, setSettingId] = useState(null);
+function SettingFormModal({ visible, onClose, onSaved, editItem }) {
+  const [form, setForm] = useState(DEFAULT_FORM);
   const [saving, setSaving] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [useSampleData, setUseSampleData] = useState(false);
-  const [notice, setNotice] = useState(null);
-
-  // 기존 설정 불러오기 (최신 1건)
-  const loadSetting = useCallback(async () => {
-    setLoading(true);
-    try {
-      const { data } = await fetchSettings();
-      if (data && data.length > 0) {
-        const s = data[0];
-        setSettingId(s.id);
-        setMarket(s.ticker_group_key || 'kospi');
-        setBuyThreshold(parseFloat(s.buy_condition) || 0.7);
-        setSellThreshold(parseFloat(s.sell_condition) || 0.6);
-        setIsActive(s.is_active ?? false);
-      }
-      setUseSampleData(false);
-      setNotice(null);
-    } catch (_) {
-      const s = sampleSettings[0];
-      setSettingId(s.id);
-      setMarket(s.ticker_group_key || 'kospi');
-      setBuyThreshold(parseFloat(s.buy_condition) || 0.7);
-      setSellThreshold(parseFloat(s.sell_condition) || 0.6);
-      setIsActive(s.is_active ?? false);
-      setUseSampleData(true);
-      setNotice('자동매매 설정은 샘플 상태로 먼저 보여주고 있어요.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
 
   useEffect(() => {
-    loadSetting();
-  }, [loadSetting]);
+    if (visible) {
+      if (editItem) {
+        setForm({
+          name: editItem.name || '',
+          execution_time: editItem.execution_time || 'market_close_1h',
+          ticker_group_key: editItem.ticker_group_key || 'usall',
+          buy_condition: String(editItem.buy_condition ?? '60'),
+          sell_condition: String(editItem.sell_condition ?? '30'),
+          is_active: editItem.is_active ?? true,
+          trade_enabled: editItem.trade_enabled ?? false,
+        });
+      } else {
+        setForm(DEFAULT_FORM);
+      }
+    }
+  }, [visible, editItem]);
 
-  const handleSave = useCallback(async () => {
+  const handleSave = async () => {
+    if (!form.name.trim()) {
+      Alert.alert('입력 오류', '설정 이름을 입력해주세요.');
+      return;
+    }
     setSaving(true);
     try {
-      if (useSampleData) {
-        Alert.alert(
-          '저장 확인',
-          '샘플 설정을 저장한 것처럼 화면에 반영했어요.',
-        );
-        return;
-      }
       const payload = {
-        ticker_group_key: market,
-        buy_condition: buyThreshold,
-        sell_condition: sellThreshold,
-        is_active: isActive,
-        name: `자동매매_${market}`,
+        name: form.name.trim(),
+        execution_time: form.execution_time,
+        ticker_group_key: form.ticker_group_key,
+        buy_condition: parseFloat(form.buy_condition) || 60,
+        sell_condition: parseFloat(form.sell_condition) || 30,
+        is_active: form.is_active,
+        trade_enabled: form.trade_enabled,
         ai_model_key: 'xgboost',
-        trade_enabled: isActive,
       };
-      if (settingId) {
-        await updateSetting(settingId, payload);
+      if (editItem) {
+        await updateSetting(editItem.id, payload);
       } else {
-        const { data } = await createSetting(payload);
-        if (data) setSettingId(data.id);
+        await createSetting(payload);
       }
-      Alert.alert('저장 완료', '자동매매 설정이 저장되었습니다.');
+      onSaved();
+      onClose();
     } catch (e) {
       Alert.alert('저장 실패', e.message);
     } finally {
       setSaving(false);
     }
-  }, [settingId, market, period, buyThreshold, sellThreshold, isActive]);
-
-  const handleToggle = useCallback(
-    async (val) => {
-      setIsActive(val);
-      if (useSampleData) return;
-      if (settingId) {
-        try {
-          await toggleSetting(settingId, val);
-        } catch (e) {
-          Alert.alert('토글 실패', e.message);
-          setIsActive(!val);
-        }
-      }
-    },
-    [settingId, useSampleData],
-  );
-
-  if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color={tdsColors.blue500} />
-      </View>
-    );
-  }
+  };
 
   return (
-    <ScrollView contentContainerStyle={styles.tabContent}>
-      {notice && (
-        <View style={styles.noticeBox}>
-          <Text style={styles.noticeText}>{notice}</Text>
-        </View>
-      )}
-
-      {/* 현재 설정 요약 카드 */}
-      <View style={styles.activeCard}>
-        <View style={styles.activeCardRow}>
-          <Text style={styles.activeCardTitle}>현재 설정</Text>
-          <Badge
-            color={isActive ? 'blue' : 'orange'}
-            size="small"
-            variant={isActive ? 'fill' : 'weak'}
-          >
-            {isActive ? '실행 중' : '대기'}
-          </Badge>
-        </View>
-        <View style={styles.activeCardInfo}>
-          <Text style={styles.activeCardItem}>
-            {MARKETS.find((m) => m.key === market)?.label ?? market}
-          </Text>
-          <Text style={styles.activeCardSep}>·</Text>
-          <Text style={styles.activeCardItem}>{period}일</Text>
-          <Text style={styles.activeCardSep}>·</Text>
-          <Text style={styles.activeCardItem}>XGBoost</Text>
-          <Text style={styles.activeCardSep}>·</Text>
-          <Text style={styles.activeCardItem}>
-            매수 {Math.round(buyThreshold * 100)}%↑
-          </Text>
-          <Text style={styles.activeCardSep}>·</Text>
-          <Text style={styles.activeCardItem}>
-            매도 {Math.round(sellThreshold * 100)}%↑
-          </Text>
-        </View>
-      </View>
-
-      <Text style={[styles.fieldLabel, { marginTop: 4 }]}>시장</Text>
-      <ChipSelector options={MARKETS} value={market} onChange={setMarket} />
-
-      <Text style={[styles.fieldLabel, { marginTop: 20 }]}>기간</Text>
-      <ChipSelector options={PERIODS} value={period} onChange={setPeriod} />
-
-      <Text style={[styles.fieldLabel, { marginTop: 20 }]}>모델</Text>
-      <View style={styles.modelBadge}>
-        <Badge color="blue" size="medium">
-          XGBoost
-        </Badge>
-      </View>
-
-      <Text style={[styles.fieldLabel, { marginTop: 20 }]}>매수 임계값</Text>
-      <ThresholdSelector value={buyThreshold} onChange={setBuyThreshold} />
-
-      <Text style={[styles.fieldLabel, { marginTop: 20 }]}>매도 임계값</Text>
-      <ThresholdSelector value={sellThreshold} onChange={setSellThreshold} />
-
-      <View style={styles.toggleRow}>
-        <Text style={styles.toggleLabel}>자동매매 ON/OFF</Text>
-        <Switch
-          value={isActive}
-          onValueChange={handleToggle}
-          trackColor={{ false: tdsDark.border, true: tdsColors.blue500 }}
-          thumbColor={tdsColors.white}
-        />
-      </View>
-
-      <Button
-        onPress={handleSave}
-        display="full"
-        loading={saving}
-        style={{ marginTop: 24 }}
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <KeyboardAvoidingView
+        style={styles.modalOverlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        저장
-      </Button>
-    </ScrollView>
+        <View style={styles.modalSheet}>
+          {/* 헤더 */}
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={onClose} hitSlop={8}>
+              <Text style={styles.modalCancel}>취소</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>{editItem ? '설정 수정' : '새 예약 추가'}</Text>
+            <TouchableOpacity onPress={handleSave} disabled={saving} hitSlop={8}>
+              {saving
+                ? <ActivityIndicator size="small" color={tdsColors.blue500} />
+                : <Text style={styles.modalSave}>저장</Text>}
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView contentContainerStyle={styles.modalBody}>
+            {/* 설정 이름 */}
+            <Text style={styles.fieldLabel}>설정 이름 (Alias)</Text>
+            <TextInput
+              style={styles.textInput}
+              value={form.name}
+              onChangeText={(v) => setForm((p) => ({ ...p, name: v }))}
+              placeholder="예: 자동매매_usall"
+              placeholderTextColor={tdsDark.textTertiary}
+            />
+
+            {/* 실행 시간 */}
+            <Text style={[styles.fieldLabel, { marginTop: 20 }]}>실행 시간</Text>
+            <View style={styles.chipGrid}>
+              {EXECUTION_TIMES.map(({ key, label }) => (
+                <TouchableOpacity
+                  key={key}
+                  onPress={() => setForm((p) => ({ ...p, execution_time: key }))}
+                  style={[styles.chip, form.execution_time === key && styles.chipActive]}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.chipText, form.execution_time === key && styles.chipTextActive]}>
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* 티커 그룹 */}
+            <Text style={[styles.fieldLabel, { marginTop: 20 }]}>티커 그룹 (Target)</Text>
+            <View style={styles.chipGrid}>
+              {TICKER_GROUPS.map(({ key, label }) => (
+                <TouchableOpacity
+                  key={key}
+                  onPress={() => setForm((p) => ({ ...p, ticker_group_key: key }))}
+                  style={[styles.chip, form.ticker_group_key === key && styles.chipActive]}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.chipText, form.ticker_group_key === key && styles.chipTextActive]}>
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* 매수/매도 조건 */}
+            <View style={styles.rowInputs}>
+              <View style={styles.halfInput}>
+                <Text style={styles.fieldLabel}>매수 확률 (%)</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={form.buy_condition}
+                  onChangeText={(v) => setForm((p) => ({ ...p, buy_condition: v }))}
+                  keyboardType="numeric"
+                  placeholder="60"
+                  placeholderTextColor={tdsDark.textTertiary}
+                />
+              </View>
+              <View style={[styles.halfInput, { marginLeft: 12 }]}>
+                <Text style={styles.fieldLabel}>매도 확률 (%)</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={form.sell_condition}
+                  onChangeText={(v) => setForm((p) => ({ ...p, sell_condition: v }))}
+                  keyboardType="numeric"
+                  placeholder="30"
+                  placeholderTextColor={tdsDark.textTertiary}
+                />
+              </View>
+            </View>
+
+            {/* 스케줄 ON/OFF */}
+            <View style={styles.toggleRow}>
+              <View>
+                <Text style={styles.toggleLabel}>스케줄 활성화</Text>
+                <Text style={styles.toggleSub}>정해진 시간에 자동으로 분석을 시작합니다</Text>
+              </View>
+              <Switch
+                value={form.is_active}
+                onValueChange={(v) => setForm((p) => ({ ...p, is_active: v }))}
+                trackColor={{ false: tdsDark.border, true: tdsColors.blue500 }}
+                thumbColor={tdsColors.white}
+              />
+            </View>
+
+            {/* 실제매매 ON/OFF */}
+            <View style={[styles.toggleRow, { marginTop: 12 }]}>
+              <View>
+                <Text style={[styles.toggleLabel, { color: tdsColors.orange500 }]}>실제 매매 활성화</Text>
+                <Text style={styles.toggleSub}>체크 해제 시 리포트만 발송됩니다</Text>
+              </View>
+              <Switch
+                value={form.trade_enabled}
+                onValueChange={(v) => setForm((p) => ({ ...p, trade_enabled: v }))}
+                trackColor={{ false: tdsDark.border, true: tdsColors.orange500 }}
+                thumbColor={tdsColors.white}
+              />
+            </View>
+          </ScrollView>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
   );
 }
 
-// ─── 로그 서브탭 ──────────────────────────────────────────────────────────────
+// ─── 설정 카드 ────────────────────────────────────────────────────────────────
 
-function formatDateTime(iso) {
-  if (!iso) return '-';
-  const d = new Date(iso);
-  return d.toLocaleString('ko-KR', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+function SettingCard({ item, onToggle, onEdit, onDelete, onPress }) {
+  const timeLabel = MARKET_TIME_LABELS[item.execution_time] ?? item.execution_time;
+  const groupLabel = TICKER_GROUP_LABELS[item.ticker_group_key] ?? item.ticker_group_key;
+
+  const handleDelete = () => {
+    Alert.alert('설정 삭제', `"${item.name}"을 삭제할까요?`, [
+      { text: '취소', style: 'cancel' },
+      { text: '삭제', style: 'destructive', onPress: () => onDelete(item.id) },
+    ]);
+  };
+
+  return (
+    <TouchableOpacity style={styles.card} onPress={() => onPress(item)} activeOpacity={0.85}>
+      {/* 이름 + 스케줄 뱃지 */}
+      <View style={styles.cardTop}>
+        <Text style={styles.cardName} numberOfLines={1}>{item.name}</Text>
+        <View style={styles.cardBadges}>
+          <Badge color={item.is_active ? 'blue' : 'grey'} size="small" variant={item.is_active ? 'fill' : 'weak'}>
+            {item.is_active ? 'ON' : 'OFF'}
+          </Badge>
+          {item.trade_enabled && (
+            <Badge color="orange" size="small" variant="fill">실매매</Badge>
+          )}
+        </View>
+      </View>
+
+      {/* 상세 정보 */}
+      <View style={styles.cardInfo}>
+        <Ionicons name="time-outline" size={12} color={tdsDark.textTertiary} />
+        <Text style={styles.cardInfoText}>{timeLabel}</Text>
+      </View>
+      <View style={styles.cardInfo}>
+        <Ionicons name="bar-chart-outline" size={12} color={tdsDark.textTertiary} />
+        <Text style={styles.cardInfoText}>{groupLabel}</Text>
+      </View>
+      <View style={styles.cardCondRow}>
+        <Text style={styles.cardCond}>매수 {item.buy_condition}% 이상</Text>
+        <Text style={styles.cardCondSep}>·</Text>
+        <Text style={styles.cardCond}>매도 {item.sell_condition}% 이하</Text>
+      </View>
+
+      {/* 액션 버튼 */}
+      <View style={styles.cardActions}>
+        <Switch
+          value={item.is_active}
+          onValueChange={(v) => onToggle(item.id, v)}
+          trackColor={{ false: tdsDark.border, true: tdsColors.blue500 }}
+          thumbColor={tdsColors.white}
+          style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+        />
+        <TouchableOpacity onPress={() => onEdit(item)} style={styles.actionBtn} hitSlop={8}>
+          <Ionicons name="create-outline" size={18} color={tdsDark.textSecondary} />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={handleDelete} style={styles.actionBtn} hitSlop={8}>
+          <Ionicons name="trash-outline" size={18} color={tdsColors.red500} />
+        </TouchableOpacity>
+      </View>
+    </TouchableOpacity>
+  );
 }
 
-function LogsTab() {
-  const [logs, setLogs] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [notice, setNotice] = useState(null);
+// ─── 메인 ─────────────────────────────────────────────────────────────────────
+
+export default function ScheduleScreen() {
+  const [settings, setSettings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [useSample, setUseSample] = useState(false);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [editItem, setEditItem] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
-      const { data, error: err } = await fetchTradeLogs(null, 50);
-      if (err) throw new Error(err.message);
-      setLogs(data || []);
-      setNotice(null);
-    } catch (e) {
-      setLogs(sampleTradeLogs);
-      setNotice('실행 로그는 샘플 데이터로 먼저 보여주고 있어요.');
+      const { data, error } = await fetchSettings();
+      if (error) throw new Error(error.message);
+      setSettings(data || []);
+      setUseSample(false);
+    } catch {
+      setSettings(sampleSettings);
+      setUseSample(true);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => { load(); }, [load]);
 
-  if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color={tdsColors.blue500} />
-      </View>
-    );
-  }
+  const handleToggle = async (id, val) => {
+    setSettings((prev) => prev.map((s) => s.id === id ? { ...s, is_active: val } : s));
+    if (useSample) return;
+    try {
+      await toggleSetting(id, val);
+    } catch (e) {
+      Alert.alert('변경 실패', e.message);
+      setSettings((prev) => prev.map((s) => s.id === id ? { ...s, is_active: !val } : s));
+    }
+  };
 
-  if (logs.length === 0) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.emptyIcon}>📝</Text>
-        <Text style={styles.emptyTitle}>아직 실행된 로그가 없어요</Text>
-        <Text style={styles.emptyDesc}>
-          자동매매를 활성화하면 실행 기록이 여기에 쌓여요
-        </Text>
-      </View>
-    );
-  }
+  const handleDelete = async (id) => {
+    if (useSample) {
+      setSettings((prev) => prev.filter((s) => s.id !== id));
+      return;
+    }
+    try {
+      await deleteSetting(id);
+      setSettings((prev) => prev.filter((s) => s.id !== id));
+    } catch (e) {
+      Alert.alert('삭제 실패', e.message);
+    }
+  };
 
-  return (
-    <ScrollView contentContainerStyle={styles.tabContent}>
-      {notice && (
-        <View style={styles.noticeBox}>
-          <Text style={styles.noticeText}>{notice}</Text>
-        </View>
-      )}
-      <View style={styles.logStats}>
-        <Text style={styles.logStatsText}>
-          전체 {logs.length}건 · 매수{' '}
-          {logs.filter((l) => l.action === 'buy').length}건 · 매도{' '}
-          {logs.filter((l) => l.action === 'sell').length}건
-        </Text>
-      </View>
-      {logs.map((log) => (
-        <View key={log.id} style={styles.logRow}>
-          <View style={styles.logLeft}>
-            <Text style={styles.logTime}>{formatDateTime(log.created_at)}</Text>
-            <Text style={styles.logTicker}>{log.ticker ?? '-'}</Text>
-          </View>
-          <View style={styles.logRight}>
-            {log.action && (
-              <Badge
-                color={log.action === 'buy' ? 'red' : 'green'}
-                size="small"
-                variant="weak"
-              >
-                {log.action === 'buy' ? '매수' : '매도'}
-              </Badge>
-            )}
-            {log.price != null && (
-              <Text style={styles.logPrice}>
-                ₩{log.price.toLocaleString('ko-KR')}
-              </Text>
-            )}
-            {log.message && <Text style={styles.logMsg}>{log.message}</Text>}
-          </View>
-        </View>
-      ))}
-    </ScrollView>
-  );
-}
+  const handleEdit = (item) => {
+    setEditItem(item);
+    setModalVisible(true);
+  };
 
-// ─── 메인 ────────────────────────────────────────────────────────────────────
+  const handleAdd = () => {
+    setEditItem(null);
+    setModalVisible(true);
+  };
 
-export default function ScheduleScreen() {
-  const [activeTab, setActiveTab] = useState('settings');
+  const handlePress = (item) => {
+    router.push({
+      pathname: '/schedule-detail',
+      params: {
+        settingId: item.id,
+        settingName: item.name,
+        targetGroup: item.ticker_group_key,
+      },
+    });
+  };
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ScreenHeader />
-      <SegmentControl
-        tabs={TABS}
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
+      {/* 헤더 */}
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.headerEyebrow}>예약 · 자동매매</Text>
+          <Text style={styles.headerTitle}>자동매매 예약</Text>
+        </View>
+        <TouchableOpacity style={styles.addBtn} onPress={handleAdd} activeOpacity={0.8}>
+          <Ionicons name="add" size={18} color={tdsColors.white} />
+          <Text style={styles.addBtnText}>예약</Text>
+        </TouchableOpacity>
+      </View>
+
+      {useSample && (
+        <View style={styles.noticeBox}>
+          <Text style={styles.noticeText}>샘플 데이터로 보여주고 있어요. Supabase 연결 시 실제 데이터가 표시됩니다.</Text>
+        </View>
+      )}
+
+      {loading ? (
+        <View style={styles.center}>
+          <ActivityIndicator color={tdsColors.blue500} />
+        </View>
+      ) : (
+        <ScrollView contentContainerStyle={styles.list}>
+          <Text style={styles.sectionTitle}>시나리오 목록</Text>
+          <Text style={styles.sectionSub}>등록된 자동 매매 설정 리스트입니다.</Text>
+
+          {settings.length === 0 ? (
+            <View style={styles.emptyBox}>
+              <Ionicons name="time-outline" size={36} color={tdsDark.textTertiary} />
+              <Text style={styles.emptyTitle}>등록된 예약이 없어요</Text>
+              <Text style={styles.emptyDesc}>우측 상단 [+ 예약] 버튼으로 추가해보세요</Text>
+            </View>
+          ) : (
+            settings.map((item) => (
+              <SettingCard
+                key={item.id}
+                item={item}
+                onToggle={handleToggle}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+                onPress={handlePress}
+              />
+            ))
+          )}
+        </ScrollView>
+      )}
+
+      <SettingFormModal
+        visible={modalVisible}
+        onClose={() => setModalVisible(false)}
+        onSaved={load}
+        editItem={editItem}
       />
-      {activeTab === 'settings' ? <SettingsTab /> : <LogsTab />}
     </SafeAreaView>
   );
 }
@@ -422,152 +448,137 @@ export default function ScheduleScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: tdsDark.bgPrimary },
-  screenHeader: {
+
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
     marginHorizontal: 16,
     marginTop: 12,
-    marginBottom: 10,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    marginBottom: 12,
   },
   headerEyebrow: { fontSize: 12, color: tdsDark.textTertiary, marginBottom: 2 },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: tdsDark.textPrimary,
-    letterSpacing: -0.5,
-  },
-  headerSub: { fontSize: 13, color: tdsDark.textSecondary, marginTop: 2 },
-  headerPill: {
-    marginTop: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+  headerTitle: { fontSize: 26, fontWeight: '800', color: tdsDark.textPrimary, letterSpacing: -0.5 },
+
+  addBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
     borderRadius: 999,
-    backgroundColor: tdsColors.blue50,
-    borderWidth: 1,
-    borderColor: `${tdsColors.blue500}33`,
+    backgroundColor: tdsColors.blue500,
   },
-  headerPillText: { fontSize: 12, color: tdsColors.blue700, fontWeight: '700' },
-  tabContent: { paddingHorizontal: 16, paddingBottom: 32 },
-  center: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-  },
+  addBtnText: { fontSize: 13, fontWeight: '700', color: tdsColors.white },
+
   noticeBox: {
-    marginBottom: 16,
+    marginHorizontal: 16,
+    marginBottom: 8,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 10,
     backgroundColor: tdsColors.blue50,
-    borderRadius: 16,
+    borderRadius: 12,
   },
-  noticeText: { fontSize: 13, lineHeight: 19, color: tdsColors.blue700 },
+  noticeText: { fontSize: 12, color: tdsColors.blue700, lineHeight: 17 },
 
-  fieldLabel: { fontSize: 13, color: tdsDark.textSecondary, marginBottom: 8 },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: tdsDark.border,
-    backgroundColor: tdsDark.bgCard,
-  },
-  chipActive: {
-    borderColor: tdsColors.blue500,
-    backgroundColor: `${tdsColors.blue500}22`,
-  },
-  chipText: { fontSize: 13, color: tdsDark.textSecondary },
-  chipTextActive: { color: tdsColors.blue500, fontWeight: '600' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
-  modelBadge: { marginBottom: 4 },
+  list: { paddingHorizontal: 16, paddingBottom: 32 },
+  sectionTitle: { fontSize: 17, fontWeight: '700', color: tdsDark.textPrimary, marginBottom: 4 },
+  sectionSub: { fontSize: 13, color: tdsDark.textSecondary, marginBottom: 16 },
 
-  toggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 24,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    backgroundColor: tdsDark.bgCard,
-    borderRadius: 20,
-    shadowColor: '#000000',
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3,
-  },
-  toggleLabel: { fontSize: 15, color: tdsDark.textPrimary, fontWeight: '500' },
+  emptyBox: { alignItems: 'center', paddingVertical: 60, gap: 8 },
+  emptyTitle: { fontSize: 15, fontWeight: '600', color: tdsDark.textPrimary },
+  emptyDesc: { fontSize: 13, color: tdsDark.textSecondary, textAlign: 'center' },
 
-  // 로그
-  logRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    backgroundColor: tdsDark.bgCard,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: tdsDark.border,
-  },
-  logLeft: { flex: 1 },
-  logRight: { alignItems: 'flex-end', gap: 4 },
-  logTime: { fontSize: 12, color: tdsDark.textTertiary, marginBottom: 2 },
-  logTicker: { fontSize: 15, fontWeight: '600', color: tdsDark.textPrimary },
-  logPrice: { fontSize: 13, color: tdsDark.textSecondary, marginTop: 4 },
-  logMsg: { fontSize: 11, color: tdsDark.textTertiary, maxWidth: 180 },
-
-  emptyText: { color: tdsDark.textSecondary, fontSize: 14 },
-  emptyIcon: { fontSize: 36, marginBottom: 12 },
-  emptyTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: tdsDark.textPrimary,
-    marginBottom: 6,
-  },
-  emptyDesc: {
-    fontSize: 13,
-    color: tdsDark.textSecondary,
-    textAlign: 'center',
-    lineHeight: 19,
-  },
-
-  activeCard: {
+  // 카드
+  card: {
     backgroundColor: tdsDark.bgCard,
     borderRadius: 20,
     padding: 16,
-    marginBottom: 20,
-    shadowColor: '#000000',
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
+    elevation: 3,
   },
-  activeCardRow: {
+  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  cardName: { fontSize: 16, fontWeight: '700', color: tdsDark.textPrimary, flex: 1, marginRight: 8 },
+  cardBadges: { flexDirection: 'row', gap: 6 },
+  cardInfo: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 },
+  cardInfoText: { fontSize: 12, color: tdsDark.textTertiary },
+  cardCondRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
+  cardCond: { fontSize: 12, color: tdsDark.textSecondary },
+  cardCondSep: { fontSize: 12, color: tdsDark.border },
+  cardActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 4,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: tdsDark.border,
+  },
+  actionBtn: { padding: 6 },
+
+  // 모달
+  modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
+  modalSheet: {
+    backgroundColor: tdsDark.bgCard,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '92%',
+  },
+  modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: tdsDark.border,
   },
-  activeCardTitle: {
-    fontSize: 14,
-    fontWeight: '600',
+  modalCancel: { fontSize: 15, color: tdsDark.textSecondary },
+  modalTitle: { fontSize: 16, fontWeight: '700', color: tdsDark.textPrimary },
+  modalSave: { fontSize: 15, fontWeight: '700', color: tdsColors.blue500 },
+  modalBody: { paddingHorizontal: 20, paddingVertical: 20, paddingBottom: 40 },
+
+  fieldLabel: { fontSize: 13, color: tdsDark.textSecondary, marginBottom: 8 },
+  textInput: {
+    backgroundColor: tdsDark.bgSecondary,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
     color: tdsDark.textPrimary,
   },
-  activeCardInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 6,
+  chipGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: tdsDark.border,
+    backgroundColor: tdsDark.bgSecondary,
   },
-  activeCardItem: { fontSize: 13, color: tdsDark.textSecondary },
-  activeCardSep: { fontSize: 13, color: tdsDark.border },
+  chipActive: { borderColor: tdsColors.blue500, backgroundColor: `${tdsColors.blue500}1A` },
+  chipText: { fontSize: 12, color: tdsDark.textSecondary },
+  chipTextActive: { color: tdsColors.blue500, fontWeight: '600' },
 
-  logStats: {
-    paddingVertical: 10,
-    marginBottom: 4,
+  rowInputs: { flexDirection: 'row', marginTop: 20 },
+  halfInput: { flex: 1 },
+
+  toggleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 20,
+    backgroundColor: tdsDark.bgSecondary,
+    padding: 14,
+    borderRadius: 16,
   },
-  logStatsText: { fontSize: 13, color: tdsDark.textSecondary },
-  tabContentLogs: { paddingBottom: 32 },
-  logList: { backgroundColor: tdsDark.bgCard, marginTop: 8 },
+  toggleLabel: { fontSize: 14, fontWeight: '600', color: tdsDark.textPrimary, marginBottom: 2 },
+  toggleSub: { fontSize: 12, color: tdsDark.textTertiary },
 });
