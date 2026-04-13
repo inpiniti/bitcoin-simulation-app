@@ -1,13 +1,4 @@
 /**
- * LogoBadge — TradingView 로고를 원형으로 렌더링
- *
- * 방법:
- *  1. SVG 텍스트를 직접 fetch (ticker 당 1회, 캐시)
- *  2. SvgXml 로 원형 clipPath + preserveAspectRatio="xMidYMid meet" 적용
- *     → 원형 보장 / object-fit:contain / 비율 유지
- *  3. 로고 없거나 로드 실패 → 이니셜 배지 폴백
- */
-/**
  * SvgUri + preserveAspectRatio="xMidYMid slice" (= cover)
  * + overflow:hidden View 원형 클립
  */
@@ -40,8 +31,8 @@ export function LogoBadge({ name, ticker, size = 40 }) {
       >
         <SvgUri
           uri={url}
-          width={size}
-          height={size}
+          width="100%"
+          height="100%"
           preserveAspectRatio="xMidYMid slice"
         />
       </View>
