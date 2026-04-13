@@ -9,7 +9,7 @@ export default function RootLayout() {
 
   return (
     <>
-      <StatusBar style="light" backgroundColor="#1e1e1e" />
+      <StatusBar style="dark" backgroundColor="#f7f9fc" />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="train" options={{ headerShown: false }} />
