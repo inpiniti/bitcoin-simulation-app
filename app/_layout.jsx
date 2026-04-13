@@ -11,6 +11,7 @@ export default function RootLayout() {
         <Stack.Screen name="train" options={{ headerShown: false }} />
         <Stack.Screen name="predict" options={{ headerShown: false }} />
         <Stack.Screen name="schedule-detail" options={{ headerShown: false }} />
+        <Stack.Screen name="schedule-form" options={{ headerShown: false }} />
       </Stack>
     </>
   );
