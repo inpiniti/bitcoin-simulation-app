@@ -176,13 +176,18 @@ function LogsTab({ settingName, activeDates, onActiveDatesChange }) {
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await fetchDlTradeLogs(settingName, 60);
+        const { data } = await fetchDlTradeLogs(60);
         if (data && data.length > 0) {
-          const dates = new Set(data.map((l) => l.date).filter(Boolean));
+          // 클라이언트 사이드 필터: setting_name 일치 또는 전체
+          const filtered = settingName
+            ? data.filter((l) => l.setting_name === settingName)
+            : data;
+          const dates = new Set(filtered.map((l) => l.date).filter(Boolean));
           onActiveDatesChange(dates);
           // 가장 최신 날짜 선택
           const latest = [...dates].sort().reverse()[0];
           if (latest) setSelectedDate(latest);
+          if (filtered.length === 0) setUseSample(true);
         } else {
           // 샘플
           const sampleFiltered = sampleDlTradeLogs.filter(
@@ -217,9 +222,13 @@ function LogsTab({ settingName, activeDates, onActiveDatesChange }) {
           );
           setLogs(filtered);
         } else {
-          const { data } = await fetchDlTradeLogsByDate(selectedDate, settingName);
+          const { data } = await fetchDlTradeLogsByDate(selectedDate);
           if (data && data.length > 0) {
-            setLogs(data);
+            // 클라이언트 사이드 필터
+            const filtered = settingName
+              ? data.filter((l) => l.setting_name === settingName)
+              : data;
+            setLogs(filtered);
           } else {
             // fallback 샘플
             const filtered = sampleDlTradeLogs.filter(
@@ -351,12 +360,17 @@ function TickersTab({ settingName, activeDates, onActiveDatesChange }) {
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await fetchTopTickersLog(settingName, 60);
+        const { data } = await fetchTopTickersLog(60);
         if (data && data.length > 0) {
-          const dates = new Set(data.map((l) => l.trade_date).filter(Boolean));
+          // 클라이언트 사이드 필터
+          const filtered = settingName
+            ? data.filter((l) => l.setting_name === settingName)
+            : data;
+          const dates = new Set(filtered.map((l) => l.trade_date).filter(Boolean));
           onActiveDatesChange(dates);
           const latest = [...dates].sort().reverse()[0];
           if (latest) setSelectedDate(latest);
+          if (filtered.length === 0) setUseSample(true);
         } else {
           const sampleFiltered = sampleTopTickers.filter(
             (l) => !settingName || l.setting_name === settingName
@@ -385,9 +399,13 @@ function TickersTab({ settingName, activeDates, onActiveDatesChange }) {
           );
           setTickerData(found ?? null);
         } else {
-          const { data } = await fetchTopTickersByDate(selectedDate, settingName);
+          const { data } = await fetchTopTickersByDate(selectedDate);
           if (data && data.length > 0) {
-            setTickerData(data[0]);
+            // 클라이언트 사이드 필터
+            const filtered = settingName
+              ? data.filter((l) => l.setting_name === settingName)
+              : data;
+            setTickerData(filtered[0] ?? null);
           } else {
             const found = sampleTopTickers.find(
               (l) => l.trade_date === selectedDate && (!settingName || l.setting_name === settingName)
