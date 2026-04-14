@@ -19,7 +19,7 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { tdsDark, tdsColors } from '../constants/tdsColors';
-import { createSetting, updateSetting, deleteSettingCascade } from '../lib/tradingApi';
+import { createSetting, updateSetting, deleteSettingCascade, fetchAiModels } from '../lib/tradingApi';
 
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
 
@@ -48,6 +48,7 @@ const DEFAULT_FORM = {
   name: '',
   execution_time: 'market_close_1h',
   ticker_group_key: 'usall',
+  ai_model_key: 'xgboost',
   buy_condition: '60',
   sell_condition: '30',
   is_active: true,
@@ -87,14 +88,32 @@ export default function ScheduleFormScreen() {
   const [form, setForm] = useState(DEFAULT_FORM);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [aiModels, setAiModels] = useState([]);
+  const [loadingModels, setLoadingModels] = useState(false);
 
   // 수정 모드일 때 기존 값 세팅
   useEffect(() => {
+    // AI 모델 목록 로드
+    const loadModels = async () => {
+      setLoadingModels(true);
+      try {
+        const { data } = await fetchAiModels();
+        if (data) setAiModels(data);
+      } catch (e) {
+        console.warn('AI 모델 로드 실패:', e.message);
+      } finally {
+        setLoadingModels(false);
+      }
+    };
+
+    loadModels();
+
     if (isEdit) {
       setForm({
         name: params.settingName ?? '',
         execution_time: params.execution_time ?? 'market_close_1h',
         ticker_group_key: params.ticker_group_key ?? 'usall',
+        ai_model_key: params.ai_model_key ?? 'xgboost',
         buy_condition: String(params.buy_condition ?? '60'),
         sell_condition: String(params.sell_condition ?? '30'),
         is_active: params.is_active === 'true' || params.is_active === true,
@@ -136,17 +155,21 @@ export default function ScheduleFormScreen() {
       Alert.alert('입력 오류', '설정 이름을 입력해주세요.');
       return;
     }
+    if (!form.ai_model_key) {
+      Alert.alert('입력 오류', 'AI 모델을 선택해주세요.');
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
         name: form.name.trim(),
         execution_time: form.execution_time,
         ticker_group_key: form.ticker_group_key,
+        ai_model_key: form.ai_model_key,
         buy_condition: parseFloat(form.buy_condition) || 60,
         sell_condition: parseFloat(form.sell_condition) || 30,
         is_active: form.is_active,
         trade_enabled: form.trade_enabled,
-        ai_model_key: 'xgboost',
       };
       if (isEdit) {
         await updateSetting(params.settingId, payload);
@@ -195,6 +218,52 @@ export default function ScheduleFormScreen() {
         {/* 티커 그룹 */}
         <Text style={[styles.fieldLabel, styles.fieldLabelTop]}>티커 그룹 (Target)</Text>
         <ChipSelector options={TICKER_GROUPS} value={form.ticker_group_key} onChange={set('ticker_group_key')} />
+
+        {/* AI 모델 선택 */}
+        <Text style={[styles.fieldLabel, styles.fieldLabelTop]}>AI 모델 (Model Key)</Text>
+        {loadingModels ? (
+          <ActivityIndicator size="large" color={tdsColors.blue500} style={{ marginVertical: 16 }} />
+        ) : (
+          <View>
+            <TouchableOpacity
+              style={[styles.modelSelector, !form.ai_model_key && { borderColor: tdsColors.red500 }]}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.modelSelectorText}>
+                {form.ai_model_key
+                  ? aiModels.find(m => m.id === form.ai_model_key)?.name || form.ai_model_key
+                  : '모델 선택 (필수)'}
+              </Text>
+            </TouchableOpacity>
+            <ScrollView style={styles.modelList} scrollEnabled={aiModels.length > 3}>
+              {aiModels.length === 0 ? (
+                <Text style={styles.noModels}>저장된 모델이 없습니다.</Text>
+              ) : (
+                aiModels.map((model) => {
+                  const isSelected = form.ai_model_key === model.id;
+                  return (
+                    <TouchableOpacity
+                      key={model.id}
+                      onPress={() => set('ai_model_key')(model.id)}
+                      style={[styles.modelItem, isSelected && styles.modelItemSelected]}
+                      activeOpacity={0.7}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.modelItemName, isSelected && styles.modelItemNameSelected]}>
+                          {model.name || model.id}
+                        </Text>
+                        <Text style={styles.modelItemMeta}>
+                          {new Date(model.created_at).toLocaleDateString('ko-KR')} · 정확도: {((model.accuracy || 0) * 100).toFixed(1)}%
+                        </Text>
+                      </View>
+                      {isSelected && <Ionicons name="checkmark-circle" size={20} color={tdsColors.blue500} />}
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </ScrollView>
+          </View>
+        )}
 
         {/* 매수 / 매도 조건 */}
         <View style={styles.rowInputs}>
@@ -317,6 +386,38 @@ const styles = StyleSheet.create({
   chipActive: { borderColor: tdsColors.blue500, backgroundColor: `${tdsColors.blue500}1A` },
   chipText: { fontSize: 12, color: tdsDark.textSecondary },
   chipTextActive: { color: tdsColors.blue500, fontWeight: '600' },
+
+  modelSelector: {
+    backgroundColor: tdsDark.bgCard,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    borderWidth: 1,
+    borderColor: tdsDark.border,
+  },
+  modelSelectorText: { fontSize: 15, color: tdsDark.textPrimary },
+
+  modelList: {
+    backgroundColor: tdsDark.bgCard,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: tdsDark.border,
+    maxHeight: 200,
+    marginTop: 8,
+  },
+  modelItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: tdsDark.border,
+  },
+  modelItemSelected: { backgroundColor: `${tdsColors.blue500}0D` },
+  modelItemName: { fontSize: 13, color: tdsDark.textSecondary, marginBottom: 2 },
+  modelItemNameSelected: { color: tdsColors.blue500, fontWeight: '600' },
+  modelItemMeta: { fontSize: 11, color: tdsDark.textTertiary },
+  noModels: { fontSize: 13, color: tdsDark.textTertiary, padding: 12, textAlign: 'center' },
 
   rowInputs: { flexDirection: 'row', marginTop: 24 },
   halfInput: { flex: 1 },
