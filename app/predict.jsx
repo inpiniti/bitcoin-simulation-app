@@ -2,13 +2,14 @@
  * 예측 화면 — XGBoost 모델로 시장 예측
  * 모델 탭에서 모델을 선택하면 push (모델은 이미 선택된 상태)
  *
- * 기능:
- *  - 기간 선택: 7일 / 14일 / 30일 / 60일
- *  - 예측 대상: 티커 그룹 (KOSPI/KOSDAQ/NASDAQ/NYSE) | 단일 종목 입력
- *  - 임계값 설정 (선택): 매수/매도 임계값 지정 → 신호 필터링
- *  - 결과: 단일 → 확률 카드 / 그룹 → 요약 + 목록
+ * 웹 DeepLearningPanel 예측 탭과 동일한 동작:
+ *  - 단일 종목 | 티커 그룹 선택
+ *  - 전체 과거 내역 예측 (Trend Backtesting) 토글
+ *  - 예측 실행 → probability / prediction (1=BUY, 0=SELL) 응답
+ *  - 결과: 최신 예측 확률 카드 + 백테스팅 결과 테이블
+ *  - AI 최적 범위 자동 추천 + 수동 임계값 조절
  */
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import {
   SafeAreaView,
   ScrollView,
@@ -30,36 +31,18 @@ import { samplePredictionResults } from '../lib/sampleData';
 
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
 
-const PERIODS = [
-  { key: 7, label: '7일' },
-  { key: 14, label: '14일' },
-  { key: 30, label: '30일' },
-  { key: 60, label: '60일' },
+// 그룹 선택지 (웹과 동일)
+const TICKER_GROUPS = [
+  { key: 'sp500',         label: 'S&P 500' },
+  { key: 'qqq',           label: 'QQQ (나스닥100)' },
+  { key: 'superinvestor', label: '슈퍼인베스터' },
+  { key: 'kospi',         label: 'KOSPI' },
+  { key: 'kosdaq',        label: 'KOSDAQ' },
+  { key: 'myholdings',    label: '내 관심 종목' },
 ];
 
-const MARKETS = [
-  { key: 'kospi', label: 'KOSPI' },
-  { key: 'kosdaq', label: 'KOSDAQ' },
-  { key: 'nasdaq', label: 'NASDAQ' },
-  { key: 'nyse', label: 'NYSE' },
-];
-
-const BUY_THRESHOLDS = [
-  { key: 0.50, label: '50%' },
-  { key: 0.55, label: '55%' },
-  { key: 0.60, label: '60%' },
-  { key: 0.65, label: '65%' },
-  { key: 0.70, label: '70%' },
-];
-
-const SELL_THRESHOLDS = [
-  { key: 0.30, label: '30%' },
-  { key: 0.35, label: '35%' },
-  { key: 0.40, label: '40%' },
-  { key: 0.45, label: '45%' },
-  { key: 0.50, label: '50%' },
-];
-
+const BUY_STEPS  = [50, 55, 60, 65, 70, 75, 80];
+const SELL_STEPS = [20, 25, 30, 35, 40, 45, 50];
 
 const BADGE_COLORS = [
   '#3182f6', '#f04452', '#03b26c',
@@ -68,9 +51,9 @@ const BADGE_COLORS = [
 
 // ─── 유틸 ─────────────────────────────────────────────────────────────────────
 
-function resolveSignal(buyProb, buyThreshold, sellThreshold) {
-  if (buyProb >= buyThreshold) return 'BUY';
-  if (buyProb <= sellThreshold) return 'SELL';
+function resolveSignal(prob, buyThr, sellThr) {
+  if (prob * 100 >= buyThr) return 'BUY';
+  if (prob * 100 < sellThr) return 'SELL';
   return 'HOLD';
 }
 
@@ -78,44 +61,25 @@ function getLetterBg(str) {
   return BADGE_COLORS[(str?.charCodeAt(0) ?? 65) % BADGE_COLORS.length];
 }
 
+function fmtPct(v, digits = 1) {
+  if (v == null) return '-';
+  const s = v.toFixed(digits);
+  return v >= 0 ? `+${s}%` : `${s}%`;
+}
+
+function fmtDate(iso) {
+  if (!iso) return '-';
+  return new Date(iso).toLocaleDateString('ko-KR', {
+    year: 'numeric', month: 'short', day: 'numeric',
+  });
+}
+
 // ─── 공통 서브컴포넌트 ─────────────────────────────────────────────────────────
 
-function SectionLabel({ children }) {
-  return <Text style={styles.sectionLabel}>{children}</Text>;
+function SectionLabel({ children, style }) {
+  return <Text style={[styles.sectionLabel, style]}>{children}</Text>;
 }
 
-function ChipRow({ options, value, onChange, disabled }) {
-  return (
-    <View style={styles.chipRow}>
-      {options.map((opt) => {
-        const active = opt.key === value;
-        return (
-          <TouchableOpacity
-            key={String(opt.key)}
-            onPress={() => !disabled && onChange(opt.key)}
-            style={[styles.chip, active && styles.chipActive]}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.chipText, active && styles.chipTextActive]}>
-              {opt.label}
-            </Text>
-          </TouchableOpacity>
-        );
-      })}
-    </View>
-  );
-}
-
-function SignalBadge({ signal }) {
-  const colorMap = { BUY: 'red', SELL: 'blue', HOLD: 'grey' };
-  return (
-    <Badge color={colorMap[signal] ?? 'grey'} size="small" variant="weak">
-      {signal}
-    </Badge>
-  );
-}
-
-// 커스텀 토글 스위치
 function ToggleSwitch({ value, onToggle }) {
   return (
     <TouchableOpacity
@@ -128,57 +92,79 @@ function ToggleSwitch({ value, onToggle }) {
   );
 }
 
-// ─── 단일 종목 결과 카드 ──────────────────────────────────────────────────────
+function SignalBadge({ signal }) {
+  const colorMap = { BUY: 'red', SELL: 'blue', HOLD: 'grey' };
+  return (
+    <Badge color={colorMap[signal] ?? 'grey'} size="small" variant="weak">
+      {signal}
+    </Badge>
+  );
+}
 
-function SingleResultCard({ result, buyThreshold, sellThreshold }) {
-  const buyProb = result.buy_probability ?? 0.5;
-  const buyPct = Math.round(buyProb * 100);
-  const sellPct = 100 - buyPct;
-  const signal = resolveSignal(buyProb, buyThreshold, sellThreshold);
+// 단계 칩 선택기 (숫자 배열)
+function StepChips({ steps, value, onChange, disabled, suffix = '%', color }) {
+  return (
+    <View style={styles.chipRow}>
+      {steps.map((s) => {
+        const active = s === value;
+        return (
+          <TouchableOpacity
+            key={s}
+            onPress={() => !disabled && onChange(s)}
+            style={[
+              styles.chip,
+              active && { borderColor: color, backgroundColor: `${color}18` },
+            ]}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.chipText, active && { color, fontWeight: '700' }]}>
+              {s}{suffix}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
 
-  const signalColor =
-    signal === 'BUY' ? tdsColors.red500
+// ─── 최신 예측 결과 카드 ──────────────────────────────────────────────────────
+
+function LatestResultCard({ result, buyThreshold, sellThreshold }) {
+  const prob    = result.probability ?? 0.5;
+  const probPct = Math.round(prob * 100);
+  const signal  = resolveSignal(prob, buyThreshold, sellThreshold);
+
+  const signalColor = signal === 'BUY' ? tdsColors.red500
     : signal === 'SELL' ? tdsColors.blue500
     : tdsDark.textTertiary;
 
-  const signalLabelMap = { BUY: '매수 추천', SELL: '매도 추천', HOLD: '관망' };
-  const letter = (result.name || result.ticker)?.[0]?.toUpperCase() ?? '?';
+  const signalLabel = { BUY: '매수 추천', SELL: '매도 / 관망', HOLD: '관망' }[signal];
 
   return (
-    <View style={styles.singleCard}>
-      {/* 종목 정보 */}
-      <View style={styles.singleCardHeader}>
-        <View style={[styles.letterBadge, { backgroundColor: getLetterBg(result.ticker) }]}>
-          <Text style={styles.letterBadgeText}>{letter}</Text>
+    <View style={styles.card}>
+      {/* Target Date */}
+      {result.date && (
+        <View style={styles.targetDateWrap}>
+          <Text style={styles.targetDateLabel}>Target Date</Text>
+          <Text style={styles.targetDateValue}>{fmtDate(result.date)}의 다음 날</Text>
         </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.singleName}>{result.name || result.ticker}</Text>
-          {result.name && (
-            <Text style={styles.singleTicker}>{result.ticker}</Text>
-          )}
-        </View>
-        <SignalBadge signal={signal} />
-      </View>
+      )}
 
       {/* 확률 대형 표시 */}
-      <View style={styles.probHighlight}>
-        <Text style={[styles.probBigNum, { color: signalColor }]}>{buyPct}%</Text>
-        <Text style={styles.probBigDesc}>상승 확률</Text>
+      <View style={styles.probCenter}>
+        {/* 원형 게이지 대용 — 반원 바 */}
+        <View style={styles.gaugeWrap}>
+          <View style={styles.gaugeTrack}>
+            <View style={[
+              styles.gaugeFill,
+              { width: `${probPct}%`, backgroundColor: signalColor },
+            ]} />
+          </View>
+        </View>
+        <Text style={[styles.probBigNum, { color: signalColor }]}>{probPct}%</Text>
+        <Text style={styles.riseLabel}>RISE PROB.</Text>
         <View style={[styles.signalPill, { borderColor: signalColor, backgroundColor: `${signalColor}18` }]}>
-          <Text style={[styles.signalPillText, { color: signalColor }]}>
-            {signalLabelMap[signal]}
-          </Text>
-        </View>
-      </View>
-
-      {/* 확률 바 */}
-      <View style={styles.probBarWrap}>
-        <View style={styles.probBarTrack}>
-          <View style={[styles.probBarFill, { width: `${buyPct}%` }]} />
-        </View>
-        <View style={styles.probBarLabels}>
-          <Text style={styles.probBuyLabel}>매수 {buyPct}%</Text>
-          <Text style={styles.probSellLabel}>매도 {sellPct}%</Text>
+          <Text style={[styles.signalPillText, { color: signalColor }]}>{signalLabel}</Text>
         </View>
       </View>
     </View>
@@ -188,30 +174,24 @@ function SingleResultCard({ result, buyThreshold, sellThreshold }) {
 // ─── 그룹 요약 ────────────────────────────────────────────────────────────────
 
 function GroupSummary({ results, buyThreshold, sellThreshold }) {
-  const buy = results.filter(
-    (r) => resolveSignal(r.buy_probability ?? 0.5, buyThreshold, sellThreshold) === 'BUY',
-  ).length;
-  const sell = results.filter(
-    (r) => resolveSignal(r.buy_probability ?? 0.5, buyThreshold, sellThreshold) === 'SELL',
-  ).length;
+  const buy  = results.filter(r => resolveSignal(r.probability ?? 0.5, buyThreshold, sellThreshold) === 'BUY').length;
+  const sell = results.filter(r => resolveSignal(r.probability ?? 0.5, buyThreshold, sellThreshold) === 'SELL').length;
   const hold = results.length - buy - sell;
-
   return (
     <View style={styles.summaryCard}>
-      <View style={styles.summaryItem}>
-        <Text style={[styles.summaryCount, { color: tdsColors.red500 }]}>{buy}</Text>
-        <Text style={styles.summaryLabel}>매수</Text>
-      </View>
-      <View style={styles.summaryDivider} />
-      <View style={styles.summaryItem}>
-        <Text style={[styles.summaryCount, { color: tdsDark.textTertiary }]}>{hold}</Text>
-        <Text style={styles.summaryLabel}>관망</Text>
-      </View>
-      <View style={styles.summaryDivider} />
-      <View style={styles.summaryItem}>
-        <Text style={[styles.summaryCount, { color: tdsColors.blue500 }]}>{sell}</Text>
-        <Text style={styles.summaryLabel}>매도</Text>
-      </View>
+      {[
+        { label: '매수', count: buy,  color: tdsColors.red500 },
+        { label: '관망', count: hold, color: tdsDark.textTertiary },
+        { label: '매도', count: sell, color: tdsColors.blue500 },
+      ].map((item, i) => (
+        <View key={item.label} style={{ flex: 1, flexDirection: 'row' }}>
+          {i > 0 && <View style={styles.summaryDivider} />}
+          <View style={styles.summaryItem}>
+            <Text style={[styles.summaryCount, { color: item.color }]}>{item.count}</Text>
+            <Text style={styles.summaryLabel}>{item.label}</Text>
+          </View>
+        </View>
+      ))}
     </View>
   );
 }
@@ -220,17 +200,14 @@ function GroupSummary({ results, buyThreshold, sellThreshold }) {
 
 function PredictRow({ r, buyThreshold, sellThreshold, isLast }) {
   const displayName = r.name || r.ticker;
-  const letter = displayName[0]?.toUpperCase() ?? '?';
-  const bg = getLetterBg(displayName);
-  const buyProb = r.buy_probability ?? 0.5;
-  const buyPct = Math.round(buyProb * 100);
-  const sellPct = 100 - buyPct;
-  const signal = resolveSignal(buyProb, buyThreshold, sellThreshold);
+  const prob    = r.probability ?? 0.5;
+  const probPct = Math.round(prob * 100);
+  const signal  = resolveSignal(prob, buyThreshold, sellThreshold);
 
   return (
     <View style={[styles.predictRow, !isLast && styles.predictRowBorder]}>
-      <View style={[styles.letterBadge, { backgroundColor: bg }]}>
-        <Text style={styles.letterBadgeText}>{letter}</Text>
+      <View style={[styles.letterBadge, { backgroundColor: getLetterBg(displayName) }]}>
+        <Text style={styles.letterBadgeText}>{displayName[0]?.toUpperCase()}</Text>
       </View>
       <View style={styles.predictInfo}>
         <View style={styles.predictNameRow}>
@@ -238,14 +215,269 @@ function PredictRow({ r, buyThreshold, sellThreshold, isLast }) {
           {r.name && <Text style={styles.predictCode}>{r.ticker}</Text>}
         </View>
         <View style={styles.probTrack}>
-          <View style={[styles.probFillBuy, { width: `${buyPct}%` }]} />
+          <View style={[styles.probFill, { width: `${probPct}%` }]} />
         </View>
         <View style={styles.probLabels}>
-          <Text style={styles.probBuyLabel}>매수 {buyPct}%</Text>
-          <Text style={styles.probSellLabel}>매도 {sellPct}%</Text>
+          <Text style={styles.probBuyLabel}>매수 {probPct}%</Text>
+          <Text style={styles.probSellLabel}>매도 {100 - probPct}%</Text>
         </View>
       </View>
       <SignalBadge signal={signal} />
+    </View>
+  );
+}
+
+// ─── AI 최적 범위 계산 ────────────────────────────────────────────────────────
+
+function useOptimalRange(allResults) {
+  return useMemo(() => {
+    const valid = allResults.filter(r => r.actual != null);
+    if (valid.length < 5) return null;
+
+    let best = null, bestScore = -Infinity;
+    for (let bt = 50; bt <= 90; bt += 5) {
+      for (let st = 10; st <= 50; st += 5) {
+        const buys  = valid.filter(r => r.probability * 100 >= bt);
+        const sells = valid.filter(r => r.probability * 100 < st);
+        if (!buys.length || !sells.length) continue;
+        const buyAvg  = buys.reduce((s, r)  => s + r.actual, 0) / buys.length;
+        const sellAvg = sells.reduce((s, r) => s + r.actual, 0) / sells.length;
+        const w = Math.log10(Math.min(buys.length, sells.length) + 1);
+        const score = (buyAvg - sellAvg) * w;
+        if (score > bestScore) {
+          bestScore = score;
+          best = {
+            buyThreshold: bt, sellThreshold: st,
+            buyCount: buys.length, buyAvg,
+            buySum: buys.reduce((s, r) => s + r.actual, 0),
+            sellCount: sells.length, sellAvg,
+            sellSum: sells.reduce((s, r) => s + r.actual, 0),
+          };
+        }
+      }
+    }
+    return best;
+  }, [allResults]);
+}
+
+// ─── AI 최적 범위 카드 ────────────────────────────────────────────────────────
+
+function OptimalRangeCard({ optimal, onApply }) {
+  if (!optimal) return null;
+  return (
+    <View style={[styles.card, styles.optimalCard]}>
+      <View style={styles.optimalHeader}>
+        <Ionicons name="flash" size={16} color={tdsColors.orange500} />
+        <Text style={styles.optimalTitle}>AI 최적 범위 추천</Text>
+      </View>
+      <Text style={styles.optimalDesc}>
+        백테스팅 데이터를 분석하여 최적의 매수/매도 임계값을 자동 계산합니다.
+      </Text>
+      <View style={styles.optimalGrid}>
+        <View style={[styles.optimalItem, styles.optimalBuy]}>
+          <View style={styles.optimalItemHeader}>
+            <Ionicons name="trending-up" size={14} color={tdsColors.red500} />
+            <Text style={[styles.optimalItemLabel, { color: tdsColors.red500 }]}>매수 범위</Text>
+          </View>
+          <Text style={[styles.optimalThreshold, { color: tdsColors.red500 }]}>
+            {optimal.buyThreshold}% 이상
+          </Text>
+          <Text style={[styles.optimalAvg, { color: tdsColors.red500 }]}>
+            평균: {fmtPct(optimal.buyAvg)}
+          </Text>
+          <Text style={styles.optimalCount}>
+            {optimal.buyCount}건 (합계 {fmtPct(optimal.buySum, 1)})
+          </Text>
+        </View>
+        <View style={[styles.optimalItem, styles.optimalSell]}>
+          <View style={styles.optimalItemHeader}>
+            <Ionicons name="trending-down" size={14} color={tdsColors.blue500} />
+            <Text style={[styles.optimalItemLabel, { color: tdsColors.blue500 }]}>매도 범위</Text>
+          </View>
+          <Text style={[styles.optimalThreshold, { color: tdsColors.blue500 }]}>
+            {optimal.sellThreshold}% 미만
+          </Text>
+          <Text style={[styles.optimalAvg, { color: tdsColors.blue500 }]}>
+            평균: {fmtPct(optimal.sellAvg)}
+          </Text>
+          <Text style={styles.optimalCount}>
+            {optimal.sellCount}건 (합계 {fmtPct(optimal.sellSum, 1)})
+          </Text>
+        </View>
+      </View>
+      <TouchableOpacity style={styles.applyBtn} onPress={onApply} activeOpacity={0.7}>
+        <Ionicons name="checkmark-circle-outline" size={15} color={tdsColors.orange500} />
+        <Text style={styles.applyBtnText}>최적값 적용하기</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+// ─── 수동 임계값 조절 카드 ────────────────────────────────────────────────────
+
+function ThresholdCard({
+  buyThreshold, setBuyThreshold,
+  sellThreshold, setSellThreshold,
+  currentStats,
+  disabled,
+}) {
+  return (
+    <View style={styles.card}>
+      <View style={styles.thresholdCardHeader}>
+        <Ionicons name="options-outline" size={16} color={tdsDark.textSecondary} />
+        <Text style={styles.thresholdCardTitle}>수동 범위 조절</Text>
+      </View>
+      <Text style={styles.optimalDesc}>슬라이더 대신 단계 선택으로 매수/매도 임계값을 조정하세요.</Text>
+
+      <View style={styles.thresholdSection}>
+        <View style={styles.thresholdLabelRow}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Ionicons name="trending-up" size={13} color={tdsColors.red500} />
+            <Text style={styles.thresholdFieldLabel}>매수 범위</Text>
+          </View>
+          <Text style={[styles.thresholdValue, { color: tdsColors.red500 }]}>
+            {buyThreshold}% 이상
+          </Text>
+        </View>
+        <StepChips
+          steps={BUY_STEPS}
+          value={buyThreshold}
+          onChange={setBuyThreshold}
+          disabled={disabled}
+          color={tdsColors.red500}
+        />
+      </View>
+
+      <View style={[styles.thresholdSection, { marginTop: 16 }]}>
+        <View style={styles.thresholdLabelRow}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Ionicons name="trending-down" size={13} color={tdsColors.blue500} />
+            <Text style={styles.thresholdFieldLabel}>매도 범위</Text>
+          </View>
+          <Text style={[styles.thresholdValue, { color: tdsColors.blue500 }]}>
+            {sellThreshold}% 미만
+          </Text>
+        </View>
+        <StepChips
+          steps={SELL_STEPS}
+          value={sellThreshold}
+          onChange={setSellThreshold}
+          disabled={disabled}
+          color={tdsColors.blue500}
+        />
+      </View>
+
+      {currentStats && (
+        <View style={styles.currentStatsRow}>
+          <View style={[styles.statBox, { backgroundColor: `${tdsColors.red500}12` }]}>
+            <Text style={styles.statBoxLabel}>매수 시 평균</Text>
+            <Text style={[styles.statBoxValue, {
+              color: currentStats.buyAvg >= 0 ? tdsColors.red500 : tdsColors.blue500,
+            }]}>
+              {fmtPct(currentStats.buyAvg)}
+            </Text>
+            <Text style={styles.statBoxSub}>{currentStats.buyCount}건 (합 {fmtPct(currentStats.buySum, 0)})</Text>
+          </View>
+          <View style={[styles.statBox, { backgroundColor: `${tdsColors.blue500}12` }]}>
+            <Text style={styles.statBoxLabel}>매도 시 평균</Text>
+            <Text style={[styles.statBoxValue, {
+              color: currentStats.sellAvg >= 0 ? tdsColors.red500 : tdsColors.blue500,
+            }]}>
+              {fmtPct(currentStats.sellAvg)}
+            </Text>
+            <Text style={styles.statBoxSub}>{currentStats.sellCount}건 (합 {fmtPct(currentStats.sellSum, 0)})</Text>
+          </View>
+        </View>
+      )}
+    </View>
+  );
+}
+
+// ─── 백테스팅 결과 테이블 ─────────────────────────────────────────────────────
+
+function BacktestTable({ results }) {
+  const shown = results.slice(0, 200);
+  return (
+    <View style={styles.card}>
+      <Text style={styles.backtestTitle}>
+        백테스팅 결과 ({results.length.toLocaleString()}건)
+      </Text>
+      <Text style={styles.backtestDesc}>
+        과거 데이터에 대한 예측 결과와 실제 변동률을 비교합니다.
+      </Text>
+
+      {/* 헤더 */}
+      <View style={styles.tableHeader}>
+        <Text style={[styles.thCell, { flex: 2 }]}>날짜</Text>
+        <Text style={[styles.thCell, { flex: 1.2 }]}>연속일</Text>
+        <Text style={[styles.thCell, { flex: 1.5, textAlign: 'right' }]}>30일%</Text>
+        <Text style={[styles.thCell, { flex: 1.5, textAlign: 'right' }]}>1일%</Text>
+        <Text style={[styles.thCell, { flex: 1.5, textAlign: 'right' }]}>예측</Text>
+        <Text style={[styles.thCell, { flex: 1.5, textAlign: 'right' }]}>실제</Text>
+        <Text style={[styles.thCell, { flex: 0.8, textAlign: 'center' }]}>적중</Text>
+      </View>
+
+      {shown.map((r, i) => {
+        const isHit = r.actual != null && (
+          (r.prediction === 1 && r.actual >= 2) ||
+          (r.prediction === 0 && r.actual < 2)
+        );
+        const probPct = Math.round((r.probability ?? 0) * 100);
+        return (
+          <View
+            key={i}
+            style={[styles.tableRow, i < shown.length - 1 && styles.tableRowBorder]}
+          >
+            <Text style={[styles.tdCell, { flex: 2, color: tdsDark.textPrimary }]}>
+              {fmtDate(r.date)}
+            </Text>
+            <Text style={[
+              styles.tdCell, { flex: 1.2 },
+              r.consecutiveDays > 0 ? styles.tdUp : r.consecutiveDays < 0 ? styles.tdDown : null,
+            ]}>
+              {r.consecutiveDays ?? 0}
+            </Text>
+            <Text style={[
+              styles.tdCell, { flex: 1.5, textAlign: 'right' },
+              r.change30d >= 0 ? styles.tdUp : styles.tdDown,
+            ]}>
+              {r.change30d != null ? `${r.change30d.toFixed(1)}%` : '-'}
+            </Text>
+            <Text style={[
+              styles.tdCell, { flex: 1.5, textAlign: 'right' },
+              r.change1d >= 0 ? styles.tdUp : styles.tdDown,
+            ]}>
+              {r.change1d != null ? `${r.change1d.toFixed(1)}%` : '-'}
+            </Text>
+            <Text style={[
+              styles.tdCell, { flex: 1.5, textAlign: 'right', fontWeight: '700' },
+              r.probability >= 0.5 ? styles.tdUp : styles.tdDown,
+            ]}>
+              {probPct}%
+            </Text>
+            <Text style={[
+              styles.tdCell, { flex: 1.5, textAlign: 'right', fontWeight: '700' },
+              r.actual == null ? { color: tdsDark.textTertiary }
+                : r.actual >= 2 ? styles.tdUp : styles.tdDown,
+            ]}>
+              {r.actual != null ? fmtPct(r.actual) : '-'}
+            </Text>
+            <Text style={[styles.tdCell, { flex: 0.8, textAlign: 'center' }]}>
+              {r.actual != null
+                ? (isHit
+                    ? <Text style={styles.hitMark}>✓</Text>
+                    : <Text style={styles.missMark}>✗</Text>)
+                : <Text style={{ color: tdsDark.textTertiary }}>-</Text>}
+            </Text>
+          </View>
+        );
+      })}
+
+      {results.length > 200 && (
+        <Text style={styles.tableFootnote}>
+          상위 200건만 표시됩니다. (총 {results.length.toLocaleString()}건)
+        </Text>
+      )}
     </View>
   );
 }
@@ -256,112 +488,163 @@ export default function PredictScreen() {
   const router = useRouter();
   const { modelId: paramModelId, modelName } = useLocalSearchParams();
 
-  // 기간
-  const [period, setPeriod] = useState(30);
-
-  // 예측 대상
-  const [targetMode, setTargetMode] = useState('group'); // 'group' | 'single'
-  const [market, setMarket] = useState('kospi');
+  // 설정
+  const [targetMode, setTargetMode]   = useState('single'); // 'single' | 'group'
   const [singleTicker, setSingleTicker] = useState('');
+  const [groupKey, setGroupKey]       = useState('sp500');
+  const [predAllTime, setPredAllTime] = useState(false); // 전체 과거 내역
 
   // 임계값
-  const [useThreshold, setUseThreshold] = useState(false);
-  const [buyThreshold, setBuyThreshold] = useState(0.60);
-  const [sellThreshold, setSellThreshold] = useState(0.40);
+  const [buyThreshold, setBuyThreshold]   = useState(60);
+  const [sellThreshold, setSellThreshold] = useState(40);
 
   // 결과
-  const [results, setResults] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [ran, setRan] = useState(false);
-  const [notice, setNotice] = useState(null);
+  const [predResult, setPredResult]       = useState(null);   // 최신 단일 결과
+  const [allPredResults, setAllPredResults] = useState([]);   // 백테스팅 전체
+  const [groupResults, setGroupResults]   = useState([]);     // 그룹 예측 목록
+  const [loading, setLoading]             = useState(false);
+  const [ran, setRan]                     = useState(false);
+  const [notice, setNotice]               = useState(null);
 
-  // 임계값 미사용 시 기본 50% 기준
-  const effectiveBuyThreshold = useThreshold ? buyThreshold : 0.505;
-  const effectiveSellThreshold = useThreshold ? sellThreshold : 0.495;
+  const isSingle  = targetMode === 'single';
+  const hasResults = isSingle ? predResult != null : groupResults.length > 0;
 
-  const isSingle = targetMode === 'single';
-  const canRun = !loading && (isSingle ? singleTicker.trim().length > 0 : true);
+  // AI 최적 범위 자동 계산 (웹 동일 로직)
+  const optimalRange = useOptimalRange(allPredResults);
+
+  // 현재 임계값에 따른 통계
+  const currentRangeStats = useMemo(() => {
+    const valid = allPredResults.filter(r => r.actual != null);
+    if (!valid.length) return null;
+    const buys  = valid.filter(r => r.probability * 100 >= buyThreshold);
+    const sells = valid.filter(r => r.probability * 100 < sellThreshold);
+    const sum = (arr) => arr.reduce((s, r) => s + r.actual, 0);
+    return {
+      buyCount: buys.length,
+      buySum:   sum(buys),
+      buyAvg:   buys.length ? sum(buys) / buys.length : 0,
+      sellCount: sells.length,
+      sellSum:   sum(sells),
+      sellAvg:   sells.length ? sum(sells) / sells.length : 0,
+    };
+  }, [allPredResults, buyThreshold, sellThreshold]);
+
+  // 모델 ID 확보
+  const resolveModelId = useCallback(async () => {
+    if (paramModelId) return paramModelId;
+    const { data } = await supabase
+      .from('ml_models')
+      .select('id')
+      .order('created_at', { ascending: false })
+      .limit(1);
+    return data?.[0]?.id ?? null;
+  }, [paramModelId]);
+
+  // 그룹 tickers 로드 (Supabase ticker_group 테이블, group_key 필터)
+  const loadGroupTickers = useCallback(async (key) => {
+    const query = supabase.from('ticker_group').select('ticker, name');
+    // group_key 컬럼이 있으면 필터 적용 (없으면 전체 반환)
+    const { data } = await query.eq('group_key', key).limit(30);
+    if (data && data.length > 0) return data;
+    // fallback: 컬럼 없거나 빈 결과 → 전체 30건
+    const { data: all } = await supabase
+      .from('ticker_group')
+      .select('ticker, name')
+      .limit(30);
+    return all ?? [];
+  }, []);
 
   const handlePredict = useCallback(async () => {
     if (isSingle && !singleTicker.trim()) return;
 
     setLoading(true);
     setNotice(null);
-    setResults([]);
+    setPredResult(null);
+    setAllPredResults([]);
+    setGroupResults([]);
     setRan(false);
 
     try {
-      let modelId = paramModelId;
-      if (!modelId) {
-        const { data: models } = await supabase
-          .from('ml_models')
-          .select('id')
-          .order('created_at', { ascending: false })
-          .limit(1);
-        modelId = models?.[0]?.id;
-      }
+      const modelId = await resolveModelId();
       if (!modelId) throw new Error('학습된 모델이 없습니다.');
 
+      // 데이터 기간: 전체 내역이면 2년치, 아니면 최신만 60일
+      const days = predAllTime ? 730 : 60;
+
       if (isSingle) {
+        // ── 단일 종목 ──────────────────────────────────────────────────────────
         const ticker = singleTicker.trim().toUpperCase();
-        const data = await predictXgb({ modelId, ticker });
-        setResults([{ ticker, ...data }]);
+        const data   = await predictXgb({ modelId, ticker, days });
+        // data = { predictions: [{ probability, prediction, date, consecutiveDays, change1d, change7d, change30d, actual? }] }
+        const preds  = data.predictions ?? [];
+        if (!preds.length) throw new Error('예측 결과가 없습니다.');
+
+        // 최신 예측 = 마지막 항목 (백엔드는 날짜순 정렬)
+        const latest = preds[preds.length - 1];
+        setPredResult({ ticker, ...latest });
+
+        // 전체 내역 모드일 때 백테스팅 저장 (확률 높은 순 정렬)
+        if (predAllTime) {
+          const sorted = [...preds].sort((a, b) => b.probability - a.probability);
+          setAllPredResults(sorted.map(p => ({ ticker, ...p })));
+        }
+        setNotice('예측이 완료됐어요.');
+
       } else {
-        const { data: tickerRows } = await supabase
-          .from('ticker_group')
-          .select('ticker, name')
-          .limit(20);
+        // ── 그룹 ──────────────────────────────────────────────────────────────
+        const tickers = await loadGroupTickers(groupKey);
+        if (!tickers.length) throw new Error('티커 목록이 없습니다.');
 
-        const tickers = tickerRows ?? [];
-        if (tickers.length === 0) throw new Error('티커 목록이 없습니다.');
-
-        const predictions = [];
+        const results = [];
         for (const { ticker, name } of tickers) {
           try {
-            const data = await predictXgb({ modelId, ticker });
-            predictions.push({ ticker, name, ...data });
+            const data  = await predictXgb({ modelId, ticker, days: 60 });
+            const preds = data.predictions ?? [];
+            if (!preds.length) continue;
+            const latest = preds[preds.length - 1];
+            results.push({ ticker, name, probability: latest.probability, prediction: latest.prediction, date: latest.date });
           } catch (_) {}
         }
-        if (predictions.length === 0) throw new Error('예측 결과가 없습니다.');
-        setResults(predictions);
+
+        if (!results.length) throw new Error('예측 결과가 없습니다.');
+        results.sort((a, b) => b.probability - a.probability);
+        setGroupResults(results);
+        setNotice(`${results.length}개 종목 예측이 완료됐어요.`);
       }
 
-      setNotice('예측이 완료됐어요.');
-    } catch (_) {
+    } catch (e) {
+      // 샘플 폴백
       if (!isSingle) {
-        const fallback =
-          samplePredictionResults[market] ?? samplePredictionResults.kospi;
-        setResults(fallback);
-        setNotice('샘플 데이터로 보여드리고 있어요.');
+        const fallback = samplePredictionResults.nasdaq;
+        // sampleData 필드 매핑: buy_probability → probability
+        const mapped = fallback.map(r => ({
+          ...r,
+          probability: r.buy_probability ?? 0.5,
+          prediction: (r.buy_probability ?? 0.5) >= 0.5 ? 1 : 0,
+        }));
+        setGroupResults(mapped);
+        setNotice('샘플 데이터로 보여드리고 있어요. (' + e.message + ')');
       } else {
-        setNotice('예측 중 오류가 발생했어요. 티커를 확인해 주세요.');
+        setNotice('예측 중 오류가 발생했어요: ' + e.message);
       }
     } finally {
       setLoading(false);
       setRan(true);
     }
-  }, [isSingle, singleTicker, market, period, paramModelId]);
+  }, [isSingle, singleTicker, groupKey, predAllTime, resolveModelId, loadGroupTickers]);
 
-  const thresholdSummary = useThreshold
-    ? `매수 ${Math.round(buyThreshold * 100)}% 이상 · 매도 ${Math.round(sellThreshold * 100)}% 미만`
-    : '설정하지 않음 (기본 50%)';
+  const canRun = !loading && (isSingle ? singleTicker.trim().length > 0 : true);
 
   return (
     <SafeAreaView style={styles.safe}>
       {/* 헤더 */}
       <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.backBtn}
-          activeOpacity={0.7}
-        >
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.7}>
           <Ionicons name="chevron-back" size={24} color={tdsDark.textPrimary} />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>예측</Text>
-          {modelName ? (
-            <Text style={styles.headerSub} numberOfLines={1}>{modelName}</Text>
-          ) : null}
+          {modelName && <Text style={styles.headerSub} numberOfLines={1}>{modelName}</Text>}
         </View>
         <View style={styles.headerRight} />
       </View>
@@ -371,179 +654,182 @@ export default function PredictScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* 알림 배너 */}
+        {/* ── 알림 배너 ─────────────────────────────────────────────────── */}
         {notice && (
-          <View
-            style={[
-              styles.noticeBanner,
-              notice.includes('오류') && styles.noticeBannerError,
-            ]}
-          >
+          <View style={[
+            styles.noticeBanner,
+            (notice.includes('오류') || notice.includes('실패')) && styles.noticeBannerError,
+          ]}>
             <Ionicons
-              name={notice.includes('오류') ? 'alert-circle-outline' : 'checkmark-circle-outline'}
-              size={15}
-              color={notice.includes('오류') ? tdsColors.red600 : tdsColors.blue700}
+              name={notice.includes('오류') || notice.includes('실패') ? 'alert-circle-outline' : 'checkmark-circle-outline'}
+              size={14}
+              color={notice.includes('오류') || notice.includes('실패') ? tdsColors.red600 : tdsColors.blue700}
               style={{ marginRight: 6 }}
             />
-            <Text
-              style={[
-                styles.noticeText,
-                notice.includes('오류') && styles.noticeTextError,
-              ]}
-            >
+            <Text style={[
+              styles.noticeText,
+              (notice.includes('오류') || notice.includes('실패')) && styles.noticeTextError,
+            ]} numberOfLines={2}>
               {notice}
             </Text>
           </View>
         )}
 
-        {/* 기간 */}
+        {/* ── 설정 카드 ─────────────────────────────────────────────────── */}
         <View style={styles.card}>
-          <SectionLabel>기간</SectionLabel>
-          <ChipRow
-            options={PERIODS}
-            value={period}
-            onChange={setPeriod}
-            disabled={loading}
-          />
-        </View>
+          <Text style={styles.cardTitle}>예측 설정</Text>
+          <Text style={styles.cardDesc}>학습된 모델을 사용하여 미래 주가를 예측합니다.</Text>
 
-        {/* 예측 대상 */}
-        <View style={styles.card}>
-          <SectionLabel>예측 대상</SectionLabel>
-
-          {/* 모드 토글 */}
-          <View style={styles.modeToggleWrap}>
-            <TouchableOpacity
-              style={[styles.modeToggleBtn, !isSingle && styles.modeToggleBtnActive]}
-              onPress={() => setTargetMode('group')}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.modeToggleText, !isSingle && styles.modeToggleTextActive]}>
-                티커 그룹
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.modeToggleBtn, isSingle && styles.modeToggleBtnActive]}
-              onPress={() => setTargetMode('single')}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.modeToggleText, isSingle && styles.modeToggleTextActive]}>
-                단일 종목
-              </Text>
-            </TouchableOpacity>
+          {/* 단일 / 그룹 탭 */}
+          <View style={styles.modeTab}>
+            {[
+              { key: 'single', label: '단일 종목' },
+              { key: 'group',  label: '티커 그룹' },
+            ].map(({ key, label }) => (
+              <TouchableOpacity
+                key={key}
+                style={[styles.modeTabBtn, targetMode === key && styles.modeTabBtnActive]}
+                onPress={() => setTargetMode(key)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.modeTabText, targetMode === key && styles.modeTabTextActive]}>
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
 
+          {/* 입력 영역 */}
           {isSingle ? (
-            <TextInput
-              style={styles.tickerInput}
-              value={singleTicker}
-              onChangeText={setSingleTicker}
-              placeholder="티커 입력  (예: AAPL, 005930)"
-              placeholderTextColor={tdsDark.textTertiary}
-              autoCapitalize="characters"
-              autoCorrect={false}
-              editable={!loading}
-            />
+            <>
+              <SectionLabel>예측할 티커</SectionLabel>
+              <TextInput
+                style={styles.tickerInput}
+                value={singleTicker}
+                onChangeText={setSingleTicker}
+                placeholder="BTC-USD, AAPL, 005930 ..."
+                placeholderTextColor={tdsDark.textTertiary}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                editable={!loading}
+              />
+            </>
           ) : (
-            <ChipRow
-              options={MARKETS}
-              value={market}
-              onChange={setMarket}
-              disabled={loading}
-            />
+            <>
+              <SectionLabel>대상 그룹 선택</SectionLabel>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={styles.groupChipRow}>
+                  {TICKER_GROUPS.map(({ key, label }) => (
+                    <TouchableOpacity
+                      key={key}
+                      style={[styles.chip, groupKey === key && styles.chipActive]}
+                      onPress={() => setGroupKey(key)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.chipText, groupKey === key && styles.chipTextActive]}>
+                        {label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+            </>
           )}
-        </View>
 
-        {/* 임계값 설정 */}
-        <View style={styles.card}>
-          <TouchableOpacity
-            style={styles.thresholdRow}
-            onPress={() => setUseThreshold((v) => !v)}
-            activeOpacity={0.7}
-          >
-            <View style={{ flex: 1 }}>
-              <SectionLabel>임계값 설정</SectionLabel>
-              <Text style={styles.thresholdSub}>{thresholdSummary}</Text>
-            </View>
-            <ToggleSwitch
-              value={useThreshold}
-              onToggle={() => setUseThreshold((v) => !v)}
-            />
-          </TouchableOpacity>
-
-          {useThreshold && (
-            <View style={styles.thresholdBody}>
-              <View style={styles.thresholdDivider} />
-              <Text style={styles.thresholdFieldLabel}>매수 조건 (이상)</Text>
-              <ChipRow
-                options={BUY_THRESHOLDS}
-                value={buyThreshold}
-                onChange={setBuyThreshold}
-                disabled={loading}
-              />
-              <Text style={[styles.thresholdFieldLabel, { marginTop: 14 }]}>
-                매도 조건 (미만)
+          {/* 전체 과거 내역 예측 (단일 모드만) */}
+          {isSingle && (
+            <View style={styles.backtestToggleRow}>
+              <TouchableOpacity
+                style={styles.backtestToggleContent}
+                onPress={() => setPredAllTime(v => !v)}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.checkbox, predAllTime && styles.checkboxChecked]}>
+                  {predAllTime && <Ionicons name="checkmark" size={12} color="#fff" />}
+                </View>
+                <Text style={styles.backtestToggleText}>전체 과거 내역 예측 (Trend Backtesting)</Text>
+              </TouchableOpacity>
+              <Text style={styles.backtestToggleDesc}>
+                체크 시 과거 모든 데이터에 대해 예측을 수행합니다. (시간이 더 소요될 수 있습니다)
               </Text>
-              <ChipRow
-                options={SELL_THRESHOLDS}
-                value={sellThreshold}
-                onChange={setSellThreshold}
-                disabled={loading}
-              />
             </View>
           )}
+
+          {/* 예측 실행 버튼 */}
+          <Button
+            onPress={handlePredict}
+            display="full"
+            loading={loading}
+            disabled={!canRun}
+            style={{ marginTop: 20 }}
+          >
+            {loading ? 'AI 예측 분석 중...' : ran ? '다시 예측하기' : '예측 실행'}
+          </Button>
         </View>
 
-        {/* 예측 실행 */}
-        <Button
-          onPress={handlePredict}
-          display="full"
-          loading={loading}
-          disabled={!canRun}
-          style={{ marginBottom: 4 }}
-        >
-          {ran ? '다시 예측하기' : '예측 실행'}
-        </Button>
-
-        {/* 로딩 */}
+        {/* ── 로딩 ─────────────────────────────────────────────────────── */}
         {loading && (
           <View style={styles.loadingBox}>
-            <ActivityIndicator color={tdsColors.blue500} />
-            <Text style={styles.loadingText}>예측 중이에요...</Text>
+            <ActivityIndicator color={tdsColors.blue500} size="large" />
+            <Text style={styles.loadingText}>백엔드 AI 엔진에서 분석 중...</Text>
           </View>
         )}
 
-        {/* 결과 */}
-        {!loading && results.length > 0 && (
-          <View style={styles.resultsWrap}>
+        {/* ── 결과 ─────────────────────────────────────────────────────── */}
+        {!loading && hasResults && (
+          <>
             {isSingle ? (
-              <SingleResultCard
-                result={results[0]}
-                buyThreshold={effectiveBuyThreshold}
-                sellThreshold={effectiveSellThreshold}
+              <LatestResultCard
+                result={predResult}
+                buyThreshold={buyThreshold}
+                sellThreshold={sellThreshold}
               />
             ) : (
               <>
                 <GroupSummary
-                  results={results}
-                  buyThreshold={effectiveBuyThreshold}
-                  sellThreshold={effectiveSellThreshold}
+                  results={groupResults}
+                  buyThreshold={buyThreshold}
+                  sellThreshold={sellThreshold}
                 />
-                <View style={styles.listCard}>
+                <View style={styles.card}>
                   <Text style={styles.listCardTitle}>예측 결과</Text>
-                  {results.map((r, i) => (
+                  {groupResults.map((r, i) => (
                     <PredictRow
                       key={r.ticker}
                       r={r}
-                      buyThreshold={effectiveBuyThreshold}
-                      sellThreshold={effectiveSellThreshold}
-                      isLast={i === results.length - 1}
+                      buyThreshold={buyThreshold}
+                      sellThreshold={sellThreshold}
+                      isLast={i === groupResults.length - 1}
                     />
                   ))}
                 </View>
               </>
             )}
-          </View>
+
+            {/* 임계값 조정 섹션 (백테스팅 결과가 있을 때) */}
+            {allPredResults.length > 1 && (
+              <>
+                <OptimalRangeCard
+                  optimal={optimalRange}
+                  onApply={() => {
+                    if (optimalRange) {
+                      setBuyThreshold(optimalRange.buyThreshold);
+                      setSellThreshold(optimalRange.sellThreshold);
+                    }
+                  }}
+                />
+                <ThresholdCard
+                  buyThreshold={buyThreshold}
+                  setBuyThreshold={setBuyThreshold}
+                  sellThreshold={sellThreshold}
+                  setSellThreshold={setSellThreshold}
+                  currentStats={currentRangeStats}
+                  disabled={loading}
+                />
+                <BacktestTable results={allPredResults} />
+              </>
+            )}
+          </>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -555,7 +841,6 @@ export default function PredictScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: tdsDark.bgPrimary },
 
-  // 헤더
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -570,7 +855,6 @@ const styles = StyleSheet.create({
   headerSub: { fontSize: 11, color: tdsDark.textTertiary, marginTop: 1 },
   headerRight: { width: 40 },
 
-  // 스크롤 컨텐츠
   content: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 40, gap: 12 },
 
   // 알림 배너
@@ -578,72 +862,49 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 14,
-    paddingVertical: 11,
+    paddingVertical: 10,
     backgroundColor: tdsColors.blue50,
     borderRadius: 12,
   },
   noticeBannerError: { backgroundColor: tdsColors.red50 },
-  noticeText: { fontSize: 13, color: tdsColors.blue700, flex: 1 },
+  noticeText: { fontSize: 12, color: tdsColors.blue700, flex: 1 },
   noticeTextError: { color: tdsColors.red600 },
 
-  // 카드 (섹션)
+  // 카드
   card: {
     backgroundColor: tdsDark.bgCard,
     borderRadius: 20,
-    padding: 18,
+    padding: 20,
     shadowColor: tdsDark.shadow,
     shadowOpacity: 1,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
+  cardTitle: { fontSize: 18, fontWeight: '700', color: tdsDark.textPrimary, marginBottom: 4 },
+  cardDesc: { fontSize: 13, color: tdsDark.textTertiary, marginBottom: 16 },
 
   // 섹션 레이블
-  sectionLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: tdsDark.textSecondary,
-    marginBottom: 12,
-  },
+  sectionLabel: { fontSize: 11, color: tdsDark.textTertiary, fontWeight: '500', marginBottom: 8 },
 
-  // 칩 셀렉터
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: tdsDark.border,
-    backgroundColor: tdsDark.bgPrimary,
-  },
-  chipActive: {
-    borderColor: tdsColors.blue500,
-    backgroundColor: tdsColors.blue50,
-  },
-  chipText: { fontSize: 13, color: tdsDark.textSecondary },
-  chipTextActive: { color: tdsColors.blue500, fontWeight: '700' },
-
-  // 예측 대상 모드 토글
-  modeToggleWrap: {
+  // 모드 탭
+  modeTab: {
     flexDirection: 'row',
     backgroundColor: tdsDark.bgPrimary,
     borderRadius: 10,
     padding: 3,
-    marginBottom: 14,
+    marginBottom: 16,
     borderWidth: 1,
     borderColor: tdsDark.border,
   },
-  modeToggleBtn: {
-    flex: 1,
-    paddingVertical: 8,
-    alignItems: 'center',
-    borderRadius: 8,
+  modeTabBtn: {
+    flex: 1, paddingVertical: 9, alignItems: 'center', borderRadius: 8,
   },
-  modeToggleBtnActive: { backgroundColor: tdsColors.blue500 },
-  modeToggleText: { fontSize: 13, fontWeight: '500', color: tdsDark.textSecondary },
-  modeToggleTextActive: { color: '#fff', fontWeight: '700' },
+  modeTabBtnActive: { backgroundColor: tdsColors.blue500 },
+  modeTabText: { fontSize: 14, fontWeight: '500', color: tdsDark.textSecondary },
+  modeTabTextActive: { color: '#fff', fontWeight: '700' },
 
-  // 단일 종목 입력
+  // 티커 입력
   tickerInput: {
     borderWidth: 1,
     borderColor: tdsDark.border,
@@ -657,124 +918,88 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
-  // 임계값 토글 행
-  thresholdRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  // 그룹 칩
+  groupChipRow: { flexDirection: 'row', gap: 8, paddingBottom: 2 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: tdsDark.border,
+    backgroundColor: tdsDark.bgPrimary,
   },
-  thresholdSub: { fontSize: 12, color: tdsDark.textTertiary, marginTop: 2 },
-  thresholdBody: { marginTop: 4 },
-  thresholdDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: tdsDark.border,
-    marginVertical: 14,
-  },
-  thresholdFieldLabel: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: tdsDark.textTertiary,
-    marginBottom: 10,
-  },
+  chipActive: { borderColor: tdsColors.blue500, backgroundColor: tdsColors.blue50 },
+  chipText: { fontSize: 13, color: tdsDark.textSecondary },
+  chipTextActive: { color: tdsColors.blue500, fontWeight: '700' },
 
-  // 커스텀 토글 스위치
-  toggle: {
-    width: 44,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: tdsDark.border,
+  // 백테스팅 토글
+  backtestToggleRow: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: tdsDark.border,
+  },
+  backtestToggleContent: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+  checkbox: {
+    width: 18,
+    height: 18,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: tdsDark.border,
+    backgroundColor: tdsDark.bgPrimary,
+    alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 3,
+    flexShrink: 0,
   },
-  toggleOn: { backgroundColor: tdsColors.blue500 },
-  toggleThumb: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#fff',
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 2,
-    alignSelf: 'flex-start',
-  },
-  toggleThumbOn: { alignSelf: 'flex-end' },
+  checkboxChecked: { backgroundColor: tdsColors.blue500, borderColor: tdsColors.blue500 },
+  backtestToggleText: { fontSize: 14, color: tdsDark.textPrimary },
+  backtestToggleDesc: { fontSize: 11, color: tdsDark.textTertiary, paddingLeft: 26 },
 
   // 로딩
-  loadingBox: {
-    alignItems: 'center',
-    paddingVertical: 24,
-    gap: 10,
-  },
+  loadingBox: { alignItems: 'center', paddingVertical: 32, gap: 12 },
   loadingText: { fontSize: 13, color: tdsDark.textTertiary },
 
-  // 결과 래퍼
-  resultsWrap: { gap: 12 },
-
-  // 단일 종목 카드
-  singleCard: {
-    backgroundColor: tdsDark.bgCard,
-    borderRadius: 20,
-    padding: 20,
-    shadowColor: tdsDark.shadow,
-    shadowOpacity: 1,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-  },
-  singleCardHeader: {
-    flexDirection: 'row',
+  // 최신 예측 카드
+  targetDateWrap: {
+    alignSelf: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: tdsDark.bgPrimary,
+    borderRadius: 10,
     alignItems: 'center',
-    gap: 12,
     marginBottom: 20,
   },
-  singleName: { fontSize: 16, fontWeight: '700', color: tdsDark.textPrimary },
-  singleTicker: { fontSize: 12, color: tdsDark.textTertiary, marginTop: 2 },
+  targetDateLabel: { fontSize: 11, color: tdsDark.textTertiary },
+  targetDateValue: { fontSize: 14, fontWeight: '700', color: tdsColors.blue600 },
 
-  // 확률 대형 표시
-  probHighlight: {
-    alignItems: 'center',
-    paddingVertical: 16,
-    gap: 6,
+  gaugeWrap: { width: '100%', marginBottom: 12 },
+  gaugeTrack: {
+    height: 8,
+    backgroundColor: tdsColors.grey200,
+    borderRadius: 4,
+    overflow: 'hidden',
   },
-  probBigNum: { fontSize: 52, fontWeight: '800', letterSpacing: -1.5 },
-  probBigDesc: { fontSize: 13, color: tdsDark.textTertiary },
+  gaugeFill: { height: '100%', borderRadius: 4 },
+
+  probCenter: { alignItems: 'center', gap: 6, paddingVertical: 8 },
+  probBigNum: { fontSize: 60, fontWeight: '900', letterSpacing: -2 },
+  riseLabel: { fontSize: 11, color: tdsDark.textTertiary, letterSpacing: 2 },
   signalPill: {
-    marginTop: 6,
-    paddingHorizontal: 16,
-    paddingVertical: 7,
+    marginTop: 4,
+    paddingHorizontal: 20,
+    paddingVertical: 8,
     borderRadius: 999,
     borderWidth: 1,
   },
-  signalPillText: { fontSize: 14, fontWeight: '700' },
+  signalPillText: { fontSize: 15, fontWeight: '700' },
 
-  // 확률 바 (단일)
-  probBarWrap: { marginTop: 16 },
-  probBarTrack: {
-    height: 6,
-    backgroundColor: tdsColors.grey200,
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  probBarFill: {
-    height: '100%',
-    backgroundColor: tdsColors.red500,
-    borderRadius: 3,
-  },
-  probBarLabels: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 6,
-  },
-  probBuyLabel: { fontSize: 12, color: tdsColors.red500, fontWeight: '600' },
-  probSellLabel: { fontSize: 12, color: tdsColors.blue500, fontWeight: '600' },
-
-  // 그룹 요약 카드
+  // 그룹 요약
   summaryCard: {
     flexDirection: 'row',
     backgroundColor: tdsDark.bgCard,
     borderRadius: 20,
-    paddingVertical: 18,
+    paddingVertical: 20,
     shadowColor: tdsDark.shadow,
     shadowOpacity: 1,
     shadowRadius: 8,
@@ -782,40 +1007,19 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   summaryItem: { flex: 1, alignItems: 'center', gap: 4 },
-  summaryCount: { fontSize: 26, fontWeight: '800' },
+  summaryCount: { fontSize: 28, fontWeight: '800' },
   summaryLabel: { fontSize: 12, color: tdsDark.textTertiary },
   summaryDivider: {
     width: StyleSheet.hairlineWidth,
     backgroundColor: tdsDark.border,
-    alignSelf: 'stretch',
-    marginVertical: 8,
+    marginVertical: 6,
   },
 
-  // 그룹 목록 카드
-  listCard: {
-    backgroundColor: tdsDark.bgCard,
-    borderRadius: 20,
-    overflow: 'hidden',
-    paddingTop: 16,
-    shadowColor: tdsDark.shadow,
-    shadowOpacity: 1,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-  },
-  listCardTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: tdsDark.textPrimary,
-    paddingHorizontal: 16,
-    marginBottom: 8,
-  },
+  // 예측 행
+  listCardTitle: { fontSize: 14, fontWeight: '600', color: tdsDark.textPrimary, marginBottom: 8 },
   predictRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 13,
-    gap: 12,
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 13, gap: 12,
   },
   predictRowBorder: {
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -826,22 +1030,80 @@ const styles = StyleSheet.create({
   predictName: { fontSize: 14, fontWeight: '600', color: tdsDark.textPrimary },
   predictCode: { fontSize: 11, color: tdsDark.textTertiary },
   probTrack: {
-    height: 4,
-    backgroundColor: tdsColors.grey200,
-    borderRadius: 2,
-    overflow: 'hidden',
+    height: 4, backgroundColor: tdsColors.grey200,
+    borderRadius: 2, overflow: 'hidden',
   },
-  probFillBuy: { height: '100%', backgroundColor: tdsColors.red500, borderRadius: 2 },
+  probFill: { height: '100%', backgroundColor: tdsColors.red500, borderRadius: 2 },
   probLabels: { flexDirection: 'row', justifyContent: 'space-between' },
+  probBuyLabel: { fontSize: 11, color: tdsColors.red500, fontWeight: '600' },
+  probSellLabel: { fontSize: 11, color: tdsColors.blue500, fontWeight: '600' },
 
-  // 공통 레터 배지
+  // 레터 배지
   letterBadge: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
+    width: 40, height: 40, borderRadius: 20,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
   letterBadgeText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+
+  // AI 최적 범위
+  optimalCard: { borderLeftWidth: 3, borderLeftColor: tdsColors.orange500 },
+  optimalHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
+  optimalTitle: { fontSize: 16, fontWeight: '700', color: tdsDark.textPrimary },
+  optimalDesc: { fontSize: 12, color: tdsDark.textTertiary, marginBottom: 14 },
+  optimalGrid: { flexDirection: 'row', gap: 10, marginBottom: 12 },
+  optimalItem: { flex: 1, borderRadius: 12, padding: 14, gap: 4 },
+  optimalBuy: { backgroundColor: `${tdsColors.red500}12`, borderWidth: 1, borderColor: `${tdsColors.red500}30` },
+  optimalSell: { backgroundColor: `${tdsColors.blue500}12`, borderWidth: 1, borderColor: `${tdsColors.blue500}30` },
+  optimalItemHeader: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  optimalItemLabel: { fontSize: 11, fontWeight: '600' },
+  optimalThreshold: { fontSize: 20, fontWeight: '800' },
+  optimalAvg: { fontSize: 16, fontWeight: '700' },
+  optimalCount: { fontSize: 11, color: tdsDark.textTertiary },
+  applyBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 10,
+    borderWidth: 1, borderColor: `${tdsColors.orange500}60`,
+    borderRadius: 10, backgroundColor: `${tdsColors.orange500}10`,
+  },
+  applyBtnText: { fontSize: 13, fontWeight: '600', color: tdsColors.orange500 },
+
+  // 수동 임계값
+  thresholdCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
+  thresholdCardTitle: { fontSize: 16, fontWeight: '700', color: tdsDark.textPrimary },
+  thresholdSection: {},
+  thresholdLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  thresholdFieldLabel: { fontSize: 13, color: tdsDark.textSecondary },
+  thresholdValue: { fontSize: 13, fontWeight: '700' },
+  currentStatsRow: { flexDirection: 'row', gap: 10, marginTop: 20, paddingTop: 16, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: tdsDark.border },
+  statBox: { flex: 1, borderRadius: 10, padding: 12, alignItems: 'center', gap: 4 },
+  statBoxLabel: { fontSize: 11, color: tdsDark.textTertiary },
+  statBoxValue: { fontSize: 20, fontWeight: '800' },
+  statBoxSub: { fontSize: 10, color: tdsDark.textTertiary, textAlign: 'center' },
+
+  // 토글 스위치
+  toggle: { width: 44, height: 26, borderRadius: 13, backgroundColor: tdsDark.border, justifyContent: 'center', paddingHorizontal: 3 },
+  toggleOn: { backgroundColor: tdsColors.blue500 },
+  toggleThumb: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff', shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 2, alignSelf: 'flex-start' },
+  toggleThumbOn: { alignSelf: 'flex-end' },
+
+  // 백테스팅 테이블
+  backtestTitle: { fontSize: 16, fontWeight: '700', color: tdsDark.textPrimary, marginBottom: 4 },
+  backtestDesc: { fontSize: 12, color: tdsDark.textTertiary, marginBottom: 14 },
+  tableHeader: {
+    flexDirection: 'row',
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    backgroundColor: tdsDark.bgPrimary,
+    borderRadius: 8,
+    marginBottom: 4,
+  },
+  thCell: { fontSize: 10, color: tdsDark.textTertiary, fontWeight: '600' },
+  tableRow: { flexDirection: 'row', paddingVertical: 9, paddingHorizontal: 4 },
+  tableRowBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: tdsDark.border },
+  tdCell: { fontSize: 11, color: tdsDark.textSecondary },
+  tdUp: { color: tdsColors.red500 },
+  tdDown: { color: tdsColors.blue500 },
+  hitMark: { color: tdsColors.red500, fontWeight: '700' },
+  missMark: { color: tdsColors.blue500 },
+  tableFootnote: { fontSize: 11, color: tdsDark.textTertiary, textAlign: 'center', marginTop: 10 },
 });
