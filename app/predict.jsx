@@ -41,6 +41,105 @@ const TICKER_GROUPS = [
   { key: 'myholdings',    label: '내 관심 종목' },
 ];
 
+// 그룹별 하드코딩 티커 (yfinance 호환, 웹 그룹 데이터 기반)
+const GROUP_TICKERS = {
+  sp500: [
+    { ticker: 'AAPL', name: '애플' },
+    { ticker: 'MSFT', name: '마이크로소프트' },
+    { ticker: 'NVDA', name: '엔비디아' },
+    { ticker: 'AMZN', name: '아마존' },
+    { ticker: 'GOOGL', name: '알파벳' },
+    { ticker: 'META', name: '메타' },
+    { ticker: 'TSLA', name: '테슬라' },
+    { ticker: 'AVGO', name: '브로드컴' },
+    { ticker: 'JPM', name: 'JP모건' },
+    { ticker: 'LLY', name: '일라이릴리' },
+    { ticker: 'UNH', name: '유나이티드헬스' },
+    { ticker: 'V', name: '비자' },
+    { ticker: 'XOM', name: '엑슨모빌' },
+    { ticker: 'MA', name: '마스터카드' },
+    { ticker: 'COST', name: '코스트코' },
+    { ticker: 'HD', name: '홈디포' },
+    { ticker: 'PG', name: 'P&G' },
+    { ticker: 'JNJ', name: '존슨앤존슨' },
+    { ticker: 'WMT', name: '월마트' },
+    { ticker: 'BAC', name: '뱅크오브아메리카' },
+  ],
+  qqq: [
+    { ticker: 'AAPL', name: '애플' },
+    { ticker: 'MSFT', name: '마이크로소프트' },
+    { ticker: 'NVDA', name: '엔비디아' },
+    { ticker: 'AMZN', name: '아마존' },
+    { ticker: 'META', name: '메타' },
+    { ticker: 'TSLA', name: '테슬라' },
+    { ticker: 'AVGO', name: '브로드컴' },
+    { ticker: 'COST', name: '코스트코' },
+    { ticker: 'NFLX', name: '넷플릭스' },
+    { ticker: 'GOOGL', name: '알파벳' },
+    { ticker: 'AMD', name: 'AMD' },
+    { ticker: 'ADBE', name: '어도비' },
+    { ticker: 'QCOM', name: '퀄컴' },
+    { ticker: 'INTC', name: '인텔' },
+    { ticker: 'INTU', name: '인튜이트' },
+    { ticker: 'AMAT', name: '어플라이드머티리얼즈' },
+    { ticker: 'MU', name: '마이크론' },
+    { ticker: 'LRCX', name: '램리서치' },
+    { ticker: 'PANW', name: '팔로알토' },
+    { ticker: 'KLAC', name: 'KLA코퍼레이션' },
+  ],
+  superinvestor: [
+    { ticker: 'AAPL', name: '애플' },
+    { ticker: 'BRK-B', name: '버크셔해서웨이' },
+    { ticker: 'KO', name: '코카콜라' },
+    { ticker: 'AMZN', name: '아마존' },
+    { ticker: 'BAC', name: '뱅크오브아메리카' },
+    { ticker: 'CVX', name: '셰브런' },
+    { ticker: 'OXY', name: '옥시덴탈페트롤리엄' },
+    { ticker: 'MCO', name: '무디스' },
+    { ticker: 'AXP', name: '아메리칸익스프레스' },
+    { ticker: 'HPQ', name: 'HP' },
+    { ticker: 'V', name: '비자' },
+    { ticker: 'MA', name: '마스터카드' },
+    { ticker: 'JNJ', name: '존슨앤존슨' },
+    { ticker: 'WFC', name: '웰스파고' },
+    { ticker: 'USB', name: 'US뱅코프' },
+    { ticker: 'DVA', name: '다비타' },
+    { ticker: 'ALLY', name: '알라이파이낸셜' },
+    { ticker: 'PARA', name: '파라마운트' },
+    { ticker: 'LSXMA', name: '리버티미디어' },
+    { ticker: 'GM', name: '제너럴모터스' },
+  ],
+  kospi: [
+    { ticker: '005930.KS', name: '삼성전자' },
+    { ticker: '000660.KS', name: 'SK하이닉스' },
+    { ticker: '005380.KS', name: '현대차' },
+    { ticker: '000270.KS', name: '기아' },
+    { ticker: '051910.KS', name: 'LG화학' },
+    { ticker: '006400.KS', name: '삼성SDI' },
+    { ticker: '035420.KS', name: 'NAVER' },
+    { ticker: '035720.KS', name: '카카오' },
+    { ticker: '068270.KS', name: '셀트리온' },
+    { ticker: '105560.KS', name: 'KB금융' },
+    { ticker: '055550.KS', name: '신한지주' },
+    { ticker: '003550.KS', name: 'LG' },
+    { ticker: '066570.KS', name: 'LG전자' },
+    { ticker: '028260.KS', name: '삼성물산' },
+    { ticker: '012330.KS', name: '현대모비스' },
+  ],
+  kosdaq: [
+    { ticker: '247540.KQ', name: '에코프로비엠' },
+    { ticker: '086520.KQ', name: '에코프로' },
+    { ticker: '196170.KQ', name: '알테오젠' },
+    { ticker: '091990.KQ', name: '셀트리온헬스케어' },
+    { ticker: '263750.KQ', name: '펄어비스' },
+    { ticker: '293490.KQ', name: '카카오게임즈' },
+    { ticker: '112040.KQ', name: '위메이드' },
+    { ticker: '041510.KQ', name: '에스엠' },
+    { ticker: '035900.KQ', name: 'JYP Ent' },
+    { ticker: '352820.KQ', name: '하이브' },
+  ],
+};
+
 const BUY_STEPS  = [50, 55, 60, 65, 70, 75, 80];
 const SELL_STEPS = [20, 25, 30, 35, 40, 45, 50];
 
@@ -540,18 +639,16 @@ export default function PredictScreen() {
     return data?.[0]?.id ?? null;
   }, [paramModelId]);
 
-  // 그룹 tickers 로드 (Supabase ticker_group 테이블, group_key 필터)
+  // 그룹 tickers 로드 — myholdings만 Supabase, 나머지는 하드코딩
   const loadGroupTickers = useCallback(async (key) => {
-    const query = supabase.from('ticker_group').select('ticker, name');
-    // group_key 컬럼이 있으면 필터 적용 (없으면 전체 반환)
-    const { data } = await query.eq('group_key', key).limit(30);
-    if (data && data.length > 0) return data;
-    // fallback: 컬럼 없거나 빈 결과 → 전체 30건
-    const { data: all } = await supabase
-      .from('ticker_group')
-      .select('ticker, name')
-      .limit(30);
-    return all ?? [];
+    if (key === 'myholdings') {
+      const { data } = await supabase
+        .from('ticker_group')
+        .select('ticker, name')
+        .limit(30);
+      return data ?? [];
+    }
+    return GROUP_TICKERS[key] ?? [];
   }, []);
 
   const handlePredict = useCallback(async () => {
