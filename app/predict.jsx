@@ -693,20 +693,32 @@ export default function PredictScreen() {
         if (!tickers.length) throw new Error('티커 목록이 없습니다.');
 
         const results = [];
+        const allPreds = []; // 백테스팅용 전체 예측 누적
         for (const { ticker, name } of tickers) {
           try {
-            const data  = await predictXgb({ modelId, ticker, days: 60 });
+            const data  = await predictXgb({ modelId, ticker, days });
             const preds = data.predictions ?? [];
             if (!preds.length) continue;
             const latest = preds[preds.length - 1];
-            results.push({ ticker, name, probability: latest.probability, prediction: latest.prediction, date: latest.date });
+            // actual 포함 — 실제/적중 컬럼에 표시
+            results.push({ ticker, name, probability: latest.probability, prediction: latest.prediction, date: latest.date, actual: latest.actual ?? null });
+            // predAllTime 체크 시 전체 내역도 누적
+            if (predAllTime) {
+              preds.forEach(p => allPreds.push({ ticker, name, ...p }));
+            }
           } catch (_) {}
         }
 
         if (!results.length) throw new Error('예측 결과가 없습니다.');
         results.sort((a, b) => b.probability - a.probability);
         setGroupResults(results);
-        setNotice(`${results.length}개 종목 예측이 완료됐어요.`);
+
+        if (predAllTime && allPreds.length) {
+          const sorted = [...allPreds].sort((a, b) => b.probability - a.probability);
+          setAllPredResults(sorted);
+        }
+
+        setNotice(`${results.length}개 종목 예측이 완료됐어요.${predAllTime ? ` (백테스팅 ${allPreds.length}건)` : ''}`);
       }
 
     } catch (e) {
@@ -833,24 +845,22 @@ export default function PredictScreen() {
             </>
           )}
 
-          {/* 전체 과거 내역 예측 (단일 모드만) */}
-          {isSingle && (
-            <View style={styles.backtestToggleRow}>
-              <TouchableOpacity
-                style={styles.backtestToggleContent}
-                onPress={() => setPredAllTime(v => !v)}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.checkbox, predAllTime && styles.checkboxChecked]}>
-                  {predAllTime && <Ionicons name="checkmark" size={12} color="#fff" />}
-                </View>
-                <Text style={styles.backtestToggleText}>전체 과거 내역 예측 (Trend Backtesting)</Text>
-              </TouchableOpacity>
-              <Text style={styles.backtestToggleDesc}>
-                체크 시 과거 모든 데이터에 대해 예측을 수행합니다. (시간이 더 소요될 수 있습니다)
-              </Text>
-            </View>
-          )}
+          {/* 전체 과거 내역 예측 */}
+          <View style={styles.backtestToggleRow}>
+            <TouchableOpacity
+              style={styles.backtestToggleContent}
+              onPress={() => setPredAllTime(v => !v)}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.checkbox, predAllTime && styles.checkboxChecked]}>
+                {predAllTime && <Ionicons name="checkmark" size={12} color="#fff" />}
+              </View>
+              <Text style={styles.backtestToggleText}>전체 과거 내역 예측 (Trend Backtesting)</Text>
+            </TouchableOpacity>
+            <Text style={styles.backtestToggleDesc}>
+              체크 시 과거 모든 데이터에 대해 예측을 수행합니다.{!isSingle ? ' (종목 수만큼 시간이 소요됩니다)' : ' (시간이 더 소요될 수 있습니다)'}
+            </Text>
+          </View>
 
           {/* 예측 실행 버튼 */}
           <Button
