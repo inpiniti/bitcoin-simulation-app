@@ -60,8 +60,6 @@ const SELL_THRESHOLDS = [
   { key: 0.50, label: '50%' },
 ];
 
-// 기간 → 백엔드 days 파라미터 매핑
-const PERIOD_TO_DAYS = { 7: 500, 14: 1000, 30: 1500, 60: 2000 };
 
 const BADGE_COLORS = [
   '#3182f6', '#f04452', '#03b26c',
@@ -306,7 +304,7 @@ export default function PredictScreen() {
 
       if (isSingle) {
         const ticker = singleTicker.trim().toUpperCase();
-        const data = await predictXgb({ model_id: modelId, ticker });
+        const data = await predictXgb({ modelId, ticker });
         setResults([{ ticker, ...data }]);
       } else {
         const { data: tickerRows } = await supabase
@@ -320,7 +318,7 @@ export default function PredictScreen() {
         const predictions = [];
         for (const { ticker, name } of tickers) {
           try {
-            const data = await predictXgb({ model_id: modelId, ticker });
+            const data = await predictXgb({ modelId, ticker });
             predictions.push({ ticker, name, ...data });
           } catch (_) {}
         }
