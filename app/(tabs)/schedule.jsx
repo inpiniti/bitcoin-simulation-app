@@ -117,6 +117,7 @@ export default function ScheduleScreen() {
         targetGroup:      item.ticker_group_key,
         execution_time:   item.execution_time,
         ticker_group_key: item.ticker_group_key,
+        ai_model_key:     item.ai_model_key,
         buy_condition:    String(item.buy_condition  ?? 60),
         sell_condition:   String(item.sell_condition ?? 30),
         is_active:        String(item.is_active      ?? true),

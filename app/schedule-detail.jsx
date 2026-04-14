@@ -487,6 +487,7 @@ export default function ScheduleDetailScreen() {
   const {
     settingId, settingName, targetGroup,
     execution_time, ticker_group_key,
+    ai_model_key,
     buy_condition, sell_condition,
     is_active, trade_enabled,
   } = useLocalSearchParams();
@@ -517,6 +518,7 @@ export default function ScheduleDetailScreen() {
               settingName,
               execution_time,
               ticker_group_key,
+              ai_model_key,
               buy_condition,
               sell_condition,
               is_active,
