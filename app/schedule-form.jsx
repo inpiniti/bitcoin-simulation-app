@@ -19,6 +19,7 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { tdsDark, tdsColors } from '../constants/tdsColors';
+import { BottomSheet } from '../components/tds/BottomSheet';
 import { createSetting, updateSetting, deleteSettingCascade, fetchAiModels } from '../lib/tradingApi';
 
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
@@ -55,27 +56,28 @@ const DEFAULT_FORM = {
   trade_enabled: false,
 };
 
-// ─── 칩 셀렉터 ───────────────────────────────────────────────────────────────
+// ─── 선택 필드 / 바텀시트 ───────────────────────────────────────────────────
 
-function ChipSelector({ options, value, onChange }) {
+function SelectField({ label, value, placeholder, onPress, hasError = false, disabled = false }) {
   return (
-    <View style={styles.chipGrid}>
-      {options.map(({ key, label }) => {
-        const active = value === key;
-        return (
-          <TouchableOpacity
-            key={key}
-            onPress={() => onChange(key)}
-            style={[styles.chip, active && styles.chipActive]}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.chipText, active && styles.chipTextActive]}>
-              {label}
-            </Text>
-          </TouchableOpacity>
-        );
-      })}
-    </View>
+    <>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <TouchableOpacity
+        style={[
+          styles.selectField,
+          hasError && styles.selectFieldError,
+          disabled && styles.selectFieldDisabled,
+        ]}
+        onPress={onPress}
+        disabled={disabled}
+        activeOpacity={0.7}
+      >
+        <Text style={[styles.selectFieldText, !value && styles.selectFieldPlaceholder]} numberOfLines={1}>
+          {value || placeholder}
+        </Text>
+        <Ionicons name="chevron-down" size={18} color={tdsDark.textTertiary} />
+      </TouchableOpacity>
+    </>
   );
 }
 
@@ -90,6 +92,7 @@ export default function ScheduleFormScreen() {
   const [deleting, setDeleting] = useState(false);
   const [aiModels, setAiModels] = useState([]);
   const [loadingModels, setLoadingModels] = useState(false);
+  const [pickerKey, setPickerKey] = useState(null);
 
   // 수정 모드일 때 기존 값 세팅
   useEffect(() => {
@@ -123,6 +126,36 @@ export default function ScheduleFormScreen() {
   }, []);
 
   const set = (key) => (val) => setForm((p) => ({ ...p, [key]: val }));
+
+  const executionLabel = EXECUTION_TIMES.find((x) => x.key === form.execution_time)?.label;
+  const tickerGroupLabel = TICKER_GROUPS.find((x) => x.key === form.ticker_group_key)?.label;
+  const selectedModel = aiModels.find((m) => m.id === form.ai_model_key);
+
+  const pickerTitle =
+    pickerKey === 'execution_time'
+      ? '실행 시간 선택'
+      : pickerKey === 'ticker_group_key'
+        ? '티커 그룹 선택'
+        : 'AI 모델 선택';
+
+  const pickerOptions =
+    pickerKey === 'execution_time'
+      ? EXECUTION_TIMES.map((x) => ({ key: x.key, label: x.label }))
+      : pickerKey === 'ticker_group_key'
+        ? TICKER_GROUPS.map((x) => ({ key: x.key, label: x.label }))
+        : aiModels.map((m) => ({
+          key: m.id,
+          label: m.name || m.id,
+          meta: `${new Date(m.created_at).toLocaleDateString('ko-KR')} · 정확도: ${((m.accuracy || 0) * 100).toFixed(1)}%`,
+        }));
+
+  const selectedPickerValue = pickerKey ? form[pickerKey] : null;
+
+  const handleSelectPickerOption = (value) => {
+    if (!pickerKey) return;
+    set(pickerKey)(value);
+    setPickerKey(null);
+  };
 
   const handleDelete = () => {
     Alert.alert(
@@ -212,58 +245,36 @@ export default function ScheduleFormScreen() {
         />
 
         {/* 실행 시간 */}
-        <Text style={[styles.fieldLabel, styles.fieldLabelTop]}>실행 시간</Text>
-        <ChipSelector options={EXECUTION_TIMES} value={form.execution_time} onChange={set('execution_time')} />
+        <View style={styles.fieldLabelTop}>
+          <SelectField
+            label="실행 시간"
+            value={executionLabel}
+            placeholder="실행 시간을 선택하세요"
+            onPress={() => setPickerKey('execution_time')}
+          />
+        </View>
 
         {/* 티커 그룹 */}
-        <Text style={[styles.fieldLabel, styles.fieldLabelTop]}>티커 그룹 (Target)</Text>
-        <ChipSelector options={TICKER_GROUPS} value={form.ticker_group_key} onChange={set('ticker_group_key')} />
+        <View style={styles.fieldLabelTop}>
+          <SelectField
+            label="티커 그룹 (Target)"
+            value={tickerGroupLabel}
+            placeholder="티커 그룹을 선택하세요"
+            onPress={() => setPickerKey('ticker_group_key')}
+          />
+        </View>
 
         {/* AI 모델 선택 */}
-        <Text style={[styles.fieldLabel, styles.fieldLabelTop]}>AI 모델 (Model Key)</Text>
-        {loadingModels ? (
-          <ActivityIndicator size="large" color={tdsColors.blue500} style={{ marginVertical: 16 }} />
-        ) : (
-          <View>
-            <TouchableOpacity
-              style={[styles.modelSelector, !form.ai_model_key && { borderColor: tdsColors.red500 }]}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.modelSelectorText}>
-                {form.ai_model_key
-                  ? aiModels.find(m => m.id === form.ai_model_key)?.name || form.ai_model_key
-                  : '모델 선택 (필수)'}
-              </Text>
-            </TouchableOpacity>
-            <ScrollView style={styles.modelList} scrollEnabled={aiModels.length > 3}>
-              {aiModels.length === 0 ? (
-                <Text style={styles.noModels}>저장된 모델이 없습니다.</Text>
-              ) : (
-                aiModels.map((model) => {
-                  const isSelected = form.ai_model_key === model.id;
-                  return (
-                    <TouchableOpacity
-                      key={model.id}
-                      onPress={() => set('ai_model_key')(model.id)}
-                      style={[styles.modelItem, isSelected && styles.modelItemSelected]}
-                      activeOpacity={0.7}
-                    >
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.modelItemName, isSelected && styles.modelItemNameSelected]}>
-                          {model.name || model.id}
-                        </Text>
-                        <Text style={styles.modelItemMeta}>
-                          {new Date(model.created_at).toLocaleDateString('ko-KR')} · 정확도: {((model.accuracy || 0) * 100).toFixed(1)}%
-                        </Text>
-                      </View>
-                      {isSelected && <Ionicons name="checkmark-circle" size={20} color={tdsColors.blue500} />}
-                    </TouchableOpacity>
-                  );
-                })
-              )}
-            </ScrollView>
-          </View>
-        )}
+        <View style={styles.fieldLabelTop}>
+          <SelectField
+            label="AI 모델 (Model Key)"
+            value={selectedModel?.name || form.ai_model_key}
+            placeholder={loadingModels ? '모델 목록을 불러오는 중이에요' : '모델 선택 (필수)'}
+            onPress={() => setPickerKey('ai_model_key')}
+            hasError={!form.ai_model_key}
+            disabled={loadingModels}
+          />
+        </View>
 
         {/* 매수 / 매도 조건 */}
         <View style={styles.rowInputs}>
@@ -333,6 +344,40 @@ export default function ScheduleFormScreen() {
           </TouchableOpacity>
         )}
       </ScrollView>
+
+      <BottomSheet
+        open={!!pickerKey}
+        onClose={() => setPickerKey(null)}
+        title={pickerTitle}
+      >
+        {pickerKey === 'ai_model_key' && !loadingModels && pickerOptions.length === 0 ? (
+          <View style={styles.sheetEmptyBox}>
+            <Text style={styles.noModels}>저장된 모델이 없어요. 모델 탭에서 학습을 먼저 진행해줘요.</Text>
+          </View>
+        ) : (
+          <ScrollView style={styles.sheetList} contentContainerStyle={styles.sheetListContent}>
+            {pickerOptions.map((option) => {
+              const selected = selectedPickerValue === option.key;
+              return (
+                <TouchableOpacity
+                  key={option.key}
+                  style={[styles.sheetOption, selected && styles.sheetOptionSelected]}
+                  onPress={() => handleSelectPickerOption(option.key)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.sheetOptionTextWrap}>
+                    <Text style={[styles.sheetOptionText, selected && styles.sheetOptionTextSelected]}>
+                      {option.label}
+                    </Text>
+                    {!!option.meta && <Text style={styles.sheetOptionMeta}>{option.meta}</Text>}
+                  </View>
+                  {selected && <Ionicons name="checkmark-circle" size={20} color={tdsColors.blue500} />}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )}
+      </BottomSheet>
     </SafeAreaView>
   );
 }
@@ -363,6 +408,23 @@ const styles = StyleSheet.create({
   fieldLabel: { fontSize: 13, color: tdsDark.textSecondary, marginBottom: 8 },
   fieldLabelTop: { marginTop: 24 },
 
+  selectField: {
+    minHeight: 48,
+    backgroundColor: tdsDark.bgCard,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: tdsDark.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  selectFieldError: { borderColor: tdsColors.red500 },
+  selectFieldDisabled: { opacity: 0.55 },
+  selectFieldText: { flex: 1, fontSize: 15, color: tdsDark.textPrimary },
+  selectFieldPlaceholder: { color: tdsDark.textTertiary },
+
   textInput: {
     backgroundColor: tdsDark.bgCard,
     borderRadius: 12,
@@ -374,37 +436,31 @@ const styles = StyleSheet.create({
     borderColor: tdsDark.border,
   },
 
-  chipGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: tdsDark.border,
-    backgroundColor: tdsDark.bgCard,
-  },
-  chipActive: { borderColor: tdsColors.blue500, backgroundColor: `${tdsColors.blue500}1A` },
-  chipText: { fontSize: 12, color: tdsDark.textSecondary },
-  chipTextActive: { color: tdsColors.blue500, fontWeight: '600' },
-
-  modelSelector: {
-    backgroundColor: tdsDark.bgCard,
-    borderRadius: 12,
+  sheetList: { maxHeight: 360 },
+  sheetListContent: { paddingBottom: 8 },
+  sheetOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 14,
     paddingVertical: 13,
-    borderWidth: 1,
-    borderColor: tdsDark.border,
-  },
-  modelSelectorText: { fontSize: 15, color: tdsDark.textPrimary },
-
-  modelList: {
-    backgroundColor: tdsDark.bgCard,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: tdsDark.border,
-    maxHeight: 200,
-    marginTop: 8,
+    backgroundColor: tdsDark.bgCard,
+    marginBottom: 8,
+    minHeight: 48,
   },
+  sheetOptionSelected: { borderColor: tdsColors.blue500, backgroundColor: `${tdsColors.blue500}10` },
+  sheetOptionTextWrap: { flex: 1, paddingRight: 8 },
+  sheetOptionText: { fontSize: 14, color: tdsDark.textPrimary },
+  sheetOptionTextSelected: { color: tdsColors.blue500, fontWeight: '700' },
+  sheetOptionMeta: { fontSize: 11, color: tdsDark.textTertiary, marginTop: 2 },
+  sheetEmptyBox: {
+    paddingVertical: 16,
+  },
+  noModels: { fontSize: 13, color: tdsDark.textTertiary, textAlign: 'center' },
+
   modelItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -417,7 +473,6 @@ const styles = StyleSheet.create({
   modelItemName: { fontSize: 13, color: tdsDark.textSecondary, marginBottom: 2 },
   modelItemNameSelected: { color: tdsColors.blue500, fontWeight: '600' },
   modelItemMeta: { fontSize: 11, color: tdsDark.textTertiary },
-  noModels: { fontSize: 13, color: tdsDark.textTertiary, padding: 12, textAlign: 'center' },
 
   rowInputs: { flexDirection: 'row', marginTop: 24 },
   halfInput: { flex: 1 },
