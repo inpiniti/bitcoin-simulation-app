@@ -439,7 +439,8 @@ function TickersTab({ settingId, settingName, activeDates, onActiveDatesChange }
 
 function TickerCard({ data }) {
   const threshold = data.buy_threshold ?? 0.6;
-  const tickers = data.tickers ?? [];
+  const rawTickers = data.tickers ?? [];
+  const tickers = typeof rawTickers === 'string' ? JSON.parse(rawTickers) : rawTickers;
 
   return (
     <View>
