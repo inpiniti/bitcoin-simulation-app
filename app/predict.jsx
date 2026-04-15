@@ -26,7 +26,7 @@ import { tdsDark, tdsColors } from '../constants/tdsColors';
 import { Button } from '../components/tds/Button';
 import { Badge } from '../components/tds/Badge';
 import { supabase } from '../lib/supabaseClient';
-import { predictXgb } from '../lib/xgbApi';
+import { predictXgb, fetchGroupTickers } from '../lib/xgbApi';
 import { samplePredictionResults } from '../lib/sampleData';
 
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
@@ -414,6 +414,61 @@ function OptimalRangeCard({ optimal, onApply }) {
 
 // ─── 수동 임계값 조절 카드 ────────────────────────────────────────────────────
 
+function ThresholdSlider({ label, icon, value, onChange, color, min, max, disabled }) {
+  const pct = Math.round(((value - min) / (max - min)) * 100);
+  return (
+    <View style={styles.thresholdSection}>
+      <View style={styles.thresholdLabelRow}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <Ionicons name={icon} size={13} color={color} />
+          <Text style={styles.thresholdFieldLabel}>{label}</Text>
+        </View>
+        <Text style={[styles.thresholdValue, { color }]}>{value}%</Text>
+      </View>
+      {/* 시각 바 */}
+      <View style={styles.sliderTrack}>
+        <View style={[styles.sliderFill, { width: `${pct}%`, backgroundColor: color }]} />
+      </View>
+      {/* +/- 조절 버튼 */}
+      <View style={styles.sliderBtnRow}>
+        <TouchableOpacity
+          style={[styles.sliderBtn, disabled && styles.sliderBtnDisabled]}
+          onPress={() => !disabled && onChange(Math.max(min, value - 5))}
+          onLongPress={() => !disabled && onChange(Math.max(min, value - 5))}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.sliderBtnText}>−5</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.sliderBtn, disabled && styles.sliderBtnDisabled]}
+          onPress={() => !disabled && onChange(Math.max(min, value - 1))}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.sliderBtnText}>−1</Text>
+        </TouchableOpacity>
+        <View style={styles.sliderValueBox}>
+          <Text style={[styles.sliderValueText, { color }]}>{value}%</Text>
+        </View>
+        <TouchableOpacity
+          style={[styles.sliderBtn, disabled && styles.sliderBtnDisabled]}
+          onPress={() => !disabled && onChange(Math.min(max, value + 1))}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.sliderBtnText}>+1</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.sliderBtn, disabled && styles.sliderBtnDisabled]}
+          onPress={() => !disabled && onChange(Math.min(max, value + 5))}
+          onLongPress={() => !disabled && onChange(Math.min(max, value + 5))}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.sliderBtnText}>+5</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
 function ThresholdCard({
   buyThreshold, setBuyThreshold,
   sellThreshold, setSellThreshold,
@@ -426,45 +481,27 @@ function ThresholdCard({
         <Ionicons name="options-outline" size={16} color={tdsDark.textSecondary} />
         <Text style={styles.thresholdCardTitle}>수동 범위 조절</Text>
       </View>
-      <Text style={styles.optimalDesc}>슬라이더 대신 단계 선택으로 매수/매도 임계값을 조정하세요.</Text>
+      <Text style={styles.optimalDesc}>1% 단위로 매수/매도 임계값을 세밀하게 조정하세요.</Text>
 
-      <View style={styles.thresholdSection}>
-        <View style={styles.thresholdLabelRow}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <Ionicons name="trending-up" size={13} color={tdsColors.red500} />
-            <Text style={styles.thresholdFieldLabel}>매수 범위</Text>
-          </View>
-          <Text style={[styles.thresholdValue, { color: tdsColors.red500 }]}>
-            {buyThreshold}% 이상
-          </Text>
-        </View>
-        <StepChips
-          steps={BUY_STEPS}
-          value={buyThreshold}
-          onChange={setBuyThreshold}
-          disabled={disabled}
-          color={tdsColors.red500}
-        />
-      </View>
+      <ThresholdSlider
+        label="매수 범위 이상"
+        icon="trending-up"
+        value={buyThreshold}
+        onChange={setBuyThreshold}
+        color={tdsColors.red500}
+        min={10} max={100}
+        disabled={disabled}
+      />
 
-      <View style={[styles.thresholdSection, { marginTop: 16 }]}>
-        <View style={styles.thresholdLabelRow}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <Ionicons name="trending-down" size={13} color={tdsColors.blue500} />
-            <Text style={styles.thresholdFieldLabel}>매도 범위</Text>
-          </View>
-          <Text style={[styles.thresholdValue, { color: tdsColors.blue500 }]}>
-            {sellThreshold}% 미만
-          </Text>
-        </View>
-        <StepChips
-          steps={SELL_STEPS}
-          value={sellThreshold}
-          onChange={setSellThreshold}
-          disabled={disabled}
-          color={tdsColors.blue500}
-        />
-      </View>
+      <ThresholdSlider
+        label="매도 범위 미만"
+        icon="trending-down"
+        value={sellThreshold}
+        onChange={setSellThreshold}
+        color={tdsColors.blue500}
+        min={1} max={60}
+        disabled={disabled}
+      />
 
       {currentStats && (
         <View style={styles.currentStatsRow}>
@@ -644,7 +681,7 @@ export default function PredictScreen() {
     return data?.[0]?.id ?? null;
   }, [paramModelId]);
 
-  // 그룹 tickers 로드 — myholdings만 Supabase, 나머지는 하드코딩
+  // 그룹 tickers 로드 — myholdings는 Supabase, 나머지는 백엔드 API (학습과 동일한 목록)
   const loadGroupTickers = useCallback(async (key) => {
     if (key === 'myholdings') {
       const { data } = await supabase
@@ -653,7 +690,14 @@ export default function PredictScreen() {
         .limit(30);
       return data ?? [];
     }
-    return GROUP_TICKERS[key] ?? [];
+    try {
+      const res = await fetchGroupTickers(key);
+      // 서버는 string[] 반환 → { ticker, name } 형태로 변환
+      return (res.tickers ?? []).map(t => ({ ticker: t, name: t }));
+    } catch (_) {
+      // 서버 실패 시 하드코딩 fallback
+      return GROUP_TICKERS[key] ?? [];
+    }
   }, []);
 
   const handlePredict = useCallback(async () => {
@@ -670,8 +714,8 @@ export default function PredictScreen() {
       const modelId = await resolveModelId();
       if (!modelId) throw new Error('학습된 모델이 없습니다.');
 
-      // 데이터 기간: 전체 내역이면 2년치, 아니면 최신만 60일
-      const days = predAllTime ? 730 : 60;
+      // 데이터 기간: 전체 내역이면 최대치(36500일), 아니면 최신만 60일
+      const days = predAllTime ? 36500 : 60;
 
       if (isSingle) {
         // ── 단일 종목 ──────────────────────────────────────────────────────────
@@ -1182,10 +1226,18 @@ const styles = StyleSheet.create({
   // 수동 임계값
   thresholdCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
   thresholdCardTitle: { fontSize: 16, fontWeight: '700', color: tdsDark.textPrimary },
-  thresholdSection: {},
-  thresholdLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  thresholdSection: { marginBottom: 16 },
+  thresholdLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   thresholdFieldLabel: { fontSize: 13, color: tdsDark.textSecondary },
   thresholdValue: { fontSize: 13, fontWeight: '700' },
+  sliderTrack: { height: 6, borderRadius: 3, backgroundColor: tdsDark.border, marginBottom: 10, overflow: 'hidden' },
+  sliderFill: { height: 6, borderRadius: 3 },
+  sliderBtnRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  sliderBtn: { flex: 1, paddingVertical: 8, borderRadius: 8, backgroundColor: tdsDark.bgSecondary, alignItems: 'center', borderWidth: StyleSheet.hairlineWidth, borderColor: tdsDark.border },
+  sliderBtnDisabled: { opacity: 0.4 },
+  sliderBtnText: { fontSize: 13, color: tdsDark.textSecondary, fontWeight: '600' },
+  sliderValueBox: { flex: 1.5, alignItems: 'center' },
+  sliderValueText: { fontSize: 16, fontWeight: '800' },
   currentStatsRow: { flexDirection: 'row', gap: 10, marginTop: 20, paddingTop: 16, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: tdsDark.border },
   statBox: { flex: 1, borderRadius: 10, padding: 12, alignItems: 'center', gap: 4 },
   statBoxLabel: { fontSize: 11, color: tdsDark.textTertiary },
