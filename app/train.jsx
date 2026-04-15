@@ -30,11 +30,33 @@ const GROUPS = [
   { key: 'kosdaq150', label: 'KOSDAQ 150' },
 ];
 
-const PERIODS = [
-  { key: 30,  label: '30일' },
-  { key: 90,  label: '90일' },
-  { key: 180, label: '180일' },
-  { key: 365, label: '1년' },
+// 2의 거듭제곱 lookback 기반 stage (백엔드 STAGE_LOOKBACKS와 동일)
+const STAGE_OPTIONS = [
+  { key: 1,  label: '1단계', desc: '1일' },
+  { key: 2,  label: '2단계', desc: '1·2일' },
+  { key: 3,  label: '3단계', desc: '~4일' },
+  { key: 4,  label: '4단계', desc: '~8일' },
+  { key: 5,  label: '5단계', desc: '~16일' },
+  { key: 6,  label: '6단계', desc: '~32일' },
+  { key: 7,  label: '7단계', desc: '~64일' },
+  { key: 8,  label: '8단계', desc: '~128일' },
+  { key: 9,  label: '9단계', desc: '~256일' },
+  { key: 10, label: '10단계', desc: '~512일' },
+  { key: 11, label: '11단계', desc: '~1024일' },
+];
+
+// stage별 최소 필요 기간 (캘린더 일수)
+const STAGE_MIN_PERIOD = {
+  1: 365, 2: 365, 3: 365, 4: 365, 5: 365, 6: 365,
+  7: 730, 8: 730, 9: 730,
+  10: 1825, 11: 1825,
+};
+
+const ALL_PERIODS = [
+  { key: 365,  label: '1년' },
+  { key: 730,  label: '2년' },
+  { key: 1825, label: '5년' },
+  { key: 9999, label: 'Max' },
 ];
 
 // ─── 모드 탭 ──────────────────────────────────────────────────────────────────
@@ -105,7 +127,20 @@ export default function TrainScreen() {
   const [mode, setMode] = useState('group');   // 'single' | 'group'
   const [ticker, setTicker] = useState('AAPL');
   const [group, setGroup] = useState('sp500');
+  const [stage, setStage] = useState(6);
   const [period, setPeriod] = useState(365);
+
+  // stage 변경 시 period가 최솟값 미달이면 자동 보정
+  const handleStageChange = (s) => {
+    setStage(s);
+    const minPeriod = STAGE_MIN_PERIOD[s] ?? 365;
+    if (period < minPeriod) setPeriod(minPeriod);
+  };
+
+  // stage에 따라 활성화 가능한 period 목록
+  const availablePeriods = ALL_PERIODS.filter(
+    (p) => p.key >= (STAGE_MIN_PERIOD[stage] ?? 365)
+  );
 
   // 학습 상태
   const [isTraining, setIsTraining] = useState(false);
@@ -155,14 +190,16 @@ export default function TrainScreen() {
           return;
         }
         const isGroup = mode === 'group';
+        const periodLabel = period === 9999 ? 'max' : `${period}d`;
         const modelName = isGroup
-          ? `XGB_${group}_${period}d`
-          : `XGB_${ticker.toUpperCase()}_${period}d`;
+          ? `XGB_${group}_s${stage}_${periodLabel}`
+          : `XGB_${ticker.toUpperCase()}_s${stage}_${periodLabel}`;
 
         ws.send(JSON.stringify({
           group: isGroup ? group : undefined,
           ticker: !isGroup ? ticker.trim().toUpperCase() : undefined,
-          period,                   // 일수 그대로 전송 (30, 90, 180, 365)
+          period: period === 9999 ? 36500 : period,  // Max → 100년(사실상 yfinance max)
+          stage,
           modelName,
         }));
         setLogs(['서버에 연결됐어요. 학습을 시작하고 있어요.']);
@@ -192,6 +229,9 @@ export default function TrainScreen() {
             setLogs((prev) => [...prev, '학습 완료! 모델이 저장됐어요.']);
             setNotice('학습이 완료됐어요. 모델 목록에서 확인하세요.');
             ws.close();
+          } else if (msg.type === 'notice') {
+            setNotice(msg.message);
+            setLogs((prev) => [...prev, `[알림] ${msg.message}`]);
           } else if (msg.type === 'error') {
             const errMsg = msg.message || '알 수 없는 오류';
             setError(`서버 오류: ${errMsg}`);
@@ -251,9 +291,10 @@ export default function TrainScreen() {
   }, []);
 
   // ── 모델 이름 미리보기 ────────────────────────────────────────────────────
+  const periodLabel = period === 9999 ? 'max' : `${period}d`;
   const previewName = mode === 'group'
-    ? `XGB_${group}_${period}d`
-    : `XGB_${(ticker || 'AAPL').toUpperCase()}_${period}d`;
+    ? `XGB_${group}_s${stage}_${periodLabel}`
+    : `XGB_${(ticker || 'AAPL').toUpperCase()}_s${stage}_${periodLabel}`;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -315,10 +356,22 @@ export default function TrainScreen() {
           </View>
         )}
 
+        {/* 피처 단계 선택 */}
+        <Text style={[styles.fieldLabel, { marginTop: 20 }]}>피처 단계</Text>
+        <Text style={styles.stageHint}>
+          단계가 높을수록 더 많은 데이터가 필요합니다 (11단계 ≈ 5년 이상)
+        </Text>
+        <ChipSelector
+          options={STAGE_OPTIONS}
+          value={stage}
+          onChange={handleStageChange}
+          disabled={isTraining}
+        />
+
         {/* 기간 선택 */}
         <Text style={[styles.fieldLabel, { marginTop: 20 }]}>학습 데이터 기간</Text>
         <ChipSelector
-          options={PERIODS}
+          options={availablePeriods}
           value={period}
           onChange={setPeriod}
           disabled={isTraining}
@@ -415,6 +468,7 @@ const styles = StyleSheet.create({
   errorText: { flex: 1, fontSize: 13, lineHeight: 19, color: tdsColors.red500 },
 
   fieldLabel: { fontSize: 13, color: tdsDark.textSecondary, marginBottom: 8 },
+  stageHint: { fontSize: 11, color: tdsDark.textTertiary, marginBottom: 8, lineHeight: 16 },
 
   modeRow: {
     flexDirection: 'row',

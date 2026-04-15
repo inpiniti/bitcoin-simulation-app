@@ -509,7 +509,7 @@ function BacktestTable({ results }) {
       <View style={styles.tableHeader}>
         <Text style={[styles.thCell, { flex: 2 }]}>날짜</Text>
         <Text style={[styles.thCell, { flex: 1.2 }]}>연속일</Text>
-        <Text style={[styles.thCell, { flex: 1.5, textAlign: 'right' }]}>30일%</Text>
+        <Text style={[styles.thCell, { flex: 1.5, textAlign: 'right' }]}>최대구간%</Text>
         <Text style={[styles.thCell, { flex: 1.5, textAlign: 'right' }]}>1일%</Text>
         <Text style={[styles.thCell, { flex: 1.5, textAlign: 'right' }]}>예측</Text>
         <Text style={[styles.thCell, { flex: 1.5, textAlign: 'right' }]}>실제</Text>
@@ -517,11 +517,16 @@ function BacktestTable({ results }) {
       </View>
 
       {shown.map((r, i) => {
+        // TO-BE: Y=1 if actual > 0, Y=0 otherwise
         const isHit = r.actual != null && (
-          (r.prediction === 1 && r.actual >= 2) ||
-          (r.prediction === 0 && r.actual < 2)
+          (r.prediction === 1 && r.actual > 0) ||
+          (r.prediction === 0 && r.actual <= 0)
         );
         const probPct = Math.round((r.probability ?? 0) * 100);
+        // 가장 긴 lookback 키를 동적으로 탐색 (stage에 따라 change1024d ~ change1d)
+        const MAX_LB_KEYS = [1024, 512, 256, 128, 64, 32, 16, 8, 4, 2, 1];
+        const maxLbKey = MAX_LB_KEYS.map((n) => `change${n}d`).find((k) => r[k] != null);
+        const maxLbVal = maxLbKey != null ? r[maxLbKey] : null;
         return (
           <View
             key={i}
@@ -538,9 +543,9 @@ function BacktestTable({ results }) {
             </Text>
             <Text style={[
               styles.tdCell, { flex: 1.5, textAlign: 'right' },
-              r.change30d >= 0 ? styles.tdUp : styles.tdDown,
+              maxLbVal >= 0 ? styles.tdUp : styles.tdDown,
             ]}>
-              {r.change30d != null ? `${r.change30d.toFixed(1)}%` : '-'}
+              {maxLbVal != null ? `${maxLbVal.toFixed(1)}%` : '-'}
             </Text>
             <Text style={[
               styles.tdCell, { flex: 1.5, textAlign: 'right' },
@@ -557,7 +562,7 @@ function BacktestTable({ results }) {
             <Text style={[
               styles.tdCell, { flex: 1.5, textAlign: 'right', fontWeight: '700' },
               r.actual == null ? { color: tdsDark.textTertiary }
-                : r.actual >= 2 ? styles.tdUp : styles.tdDown,
+                : r.actual > 0 ? styles.tdUp : styles.tdDown,
             ]}>
               {r.actual != null ? fmtPct(r.actual) : '-'}
             </Text>

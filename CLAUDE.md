@@ -244,7 +244,18 @@ AAPL     BUY       0.82       0.18
 
 ---
 
-## 7. 미결 사항 (개발 전 확인 필요)
+## 7. ML 학습 및 예측 흐름
+
+> 상세 문서: [docs/ml-flow.md](docs/ml-flow.md)
+
+### 빠른 요약
+
+- **학습**: `app/train.jsx` → WebSocket `/ws/train` → 수집(yfinance) → 전처리 → XGBoost 저장
+- **예측**: `app/predict.jsx` → REST `/v1/xgb/predict` → 수집 → 전처리 → 날짜별 확률 반환
+- **전처리 AS-IS**: 피처 4개 (consecutiveDays, change1d, change7d, change30d)
+- **전처리 TO-BE**: 2의 거듭제곱 간격 (1~1024 거래일), 11단계 Stage 시스템 도입 예정
+
+## 8. 미결 사항 (개발 전 확인 필요)
 
 - [ ] KIS API 엔드포인트 — 백엔드(`bitcoin-ai-backend`)에 `/kis/balance`, `/kis/order` 있는지 확인
 - [ ] 관심 종목 목록 소스 — Supabase 테이블인지 백엔드 설정인지 확인
