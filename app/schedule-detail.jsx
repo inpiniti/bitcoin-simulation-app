@@ -350,7 +350,7 @@ function TickersTab({ settingId, settingName, activeDates, onActiveDatesChange }
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await fetchTopTickersLog(settingId, 60);
+        const { data } = await fetchTopTickersLog(settingId, 60, settingName);
         if (data && data.length > 0) {
           const dates = new Set(data.map((l) => l.trade_date).filter(Boolean));
           onActiveDatesChange(dates);
@@ -384,7 +384,7 @@ function TickersTab({ settingId, settingName, activeDates, onActiveDatesChange }
           );
           setTickerData(found ?? null);
         } else {
-          const { data } = await fetchTopTickersByDate(selectedDate, settingId);
+          const { data } = await fetchTopTickersByDate(selectedDate, settingId, settingName);
           if (data && data.length > 0) {
             setTickerData(data[0]);
           } else {
