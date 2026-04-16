@@ -1,23 +1,31 @@
 /**
  * 티커 탭 — 관심 종목 목록 + 즉시 매수
+ *
+ * 개선 사항:
+ * - FlatList 가상화로 보이는 영역만 렌더링
+ * - 상단 지수 카드 선택 시 해당 시장 종목 필터링
+ * - Yahoo Finance로 실제 지수 데이터 조회
+ * - 현재가(current_price) 기준 표시
  */
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   SafeAreaView,
+  FlatList,
   ScrollView,
   View,
   Text,
   TextInput,
   StyleSheet,
   Alert,
+  TouchableOpacity,
 } from 'react-native';
 import { tdsDark, tdsColors } from '../../constants/tdsColors';
 import { ListRow } from '../../components/tds/ListRow';
-import { Badge } from '../../components/tds/Badge';
 import { Button } from '../../components/tds/Button';
 import { BottomSheet } from '../../components/tds/BottomSheet';
 import { supabase } from '../../lib/supabaseClient';
 import { submitKisOrder } from '../../lib/kisApi';
+import { fetchAllMarketIndices } from '../../lib/priceApi';
 import { sampleTickers, sampleMarketIndices } from '../../lib/sampleData';
 import useStore from '../../store/useStore';
 import { getPriceColor, formatRate, formatPrice } from '../../utils/price';
@@ -42,7 +50,7 @@ function SkeletonRow() {
 }
 
 // ─── 종목 통계 바 ─────────────────────────────────────────────────────────
-function TickerStatsBar({ tickers }) {
+function TickerStatsBar({ tickers, selectedIndex }) {
   if (!tickers || tickers.length === 0) return null;
   const ups = tickers.filter((t) => t.today_rate > 0).length;
   const downs = tickers.filter((t) => t.today_rate < 0).length;
@@ -50,6 +58,10 @@ function TickerStatsBar({ tickers }) {
     tickers.reduce((s, t) => s + t.today_rate, 0) / tickers.length;
   return (
     <View style={styles.statsBar}>
+      {selectedIndex && (
+        <Text style={styles.statsMarket}>{selectedIndex}</Text>
+      )}
+      {selectedIndex && <Text style={styles.statsSep}>·</Text>}
       <Text style={[styles.statsChip, { color: '#f04452' }]}>↑ {ups}</Text>
       <Text style={styles.statsSep}>·</Text>
       <Text style={[styles.statsChip, { color: tdsColors.blue500 }]}>
@@ -64,8 +76,7 @@ function TickerStatsBar({ tickers }) {
 }
 
 // ─── 시장 지수 스트립 ─────────────────────────────────────────────────────
-
-function MarketIndexStrip({ indices }) {
+function MarketIndexStrip({ indices, selectedKey, onSelect }) {
   return (
     <ScrollView
       horizontal
@@ -74,26 +85,35 @@ function MarketIndexStrip({ indices }) {
       contentContainerStyle={styles.indexStripContent}
     >
       {indices.map((idx) => {
+        const isSelected = idx.key === selectedKey;
         const isUp = idx.change >= 0;
         const color = isUp ? '#f04452' : tdsColors.blue500;
         return (
-          <View key={idx.key} style={styles.indexCard}>
-            <Text style={styles.indexLabel}>{idx.label}</Text>
-            <Text style={styles.indexValue}>
+          <TouchableOpacity
+            key={idx.key}
+            onPress={() => onSelect(isSelected ? null : idx.key)}
+            activeOpacity={0.75}
+            style={[
+              styles.indexCard,
+              isSelected && styles.indexCardSelected,
+            ]}
+          >
+            <Text style={[styles.indexLabel, isSelected && styles.indexLabelSelected]}>
+              {idx.label}
+            </Text>
+            <Text style={[styles.indexValue, isSelected && styles.indexValueSelected]}>
               {idx.value.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}
             </Text>
             <Text style={[styles.indexChange, { color }]}>
               {isUp ? '+' : ''}
-              {idx.change.toFixed(1)}%
+              {idx.change.toFixed(2)}%
             </Text>
-          </View>
+          </TouchableOpacity>
         );
       })}
     </ScrollView>
   );
 }
-
-// ─── 매수 BottomSheet ─────────────────────────────────────────────────────────
 
 // ─── 종목 상세 BottomSheet ────────────────────────────────────────────────────
 
@@ -127,7 +147,7 @@ function TickerDetailSheet({ item, open, onClose, useSampleData }) {
         setLoading(false);
       }
     },
-    [item, qty, onClose],
+    [item, qty, onClose, useSampleData],
   );
 
   if (!item) return null;
@@ -162,6 +182,9 @@ function TickerDetailSheet({ item, open, onClose, useSampleData }) {
     >
       <View style={styles.detailMeta}>
         <Text style={styles.detailCode}>{item.ticker}</Text>
+        {item.market && (
+          <Text style={styles.detailMarket}>{item.market}</Text>
+        )}
         <Text style={[styles.detailRate, { color: rateColor }]}>
           {formatRate(item.today_rate)}
         </Text>
@@ -232,15 +255,31 @@ export default function TickerScreen() {
   const authMode = useStore((s) => s.authMode);
   const [tickers, setTickers] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
   const [selected, setSelected] = useState(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [useSampleData, setUseSampleData] = useState(false);
   const [notice, setNotice] = useState(null);
+  const [selectedIndex, setSelectedIndex] = useState(null);
+  const [marketIndices, setMarketIndices] = useState(sampleMarketIndices);
+
+  // 실제 지수 데이터 로드 (Yahoo Finance)
+  const loadMarketIndices = useCallback(async () => {
+    try {
+      const live = await fetchAllMarketIndices(sampleMarketIndices);
+      setMarketIndices((prev) =>
+        prev.map((idx) =>
+          live[idx.key]
+            ? { ...idx, value: live[idx.key].value, change: live[idx.key].change }
+            : idx,
+        ),
+      );
+    } catch {
+      // 실패 시 샘플 데이터 유지
+    }
+  }, []);
 
   const loadTickers = useCallback(async () => {
     setLoading(true);
-    setError(null);
     if (authMode === 'guest' || authMode === 'locked') {
       setTickers(sampleTickers);
       setUseSampleData(true);
@@ -251,13 +290,13 @@ export default function TickerScreen() {
     try {
       const { data, error: err } = await supabase
         .from('ticker_group')
-        .select('ticker, name, current_price, today_rate')
+        .select('ticker, name, current_price, today_rate, market')
         .order('name');
       if (err) throw new Error(err.message);
       setTickers(data || []);
       setUseSampleData(false);
       setNotice(null);
-    } catch (e) {
+    } catch {
       setTickers(sampleTickers);
       setUseSampleData(true);
       setNotice(
@@ -270,50 +309,92 @@ export default function TickerScreen() {
 
   useEffect(() => {
     loadTickers();
-  }, [loadTickers]);
+    loadMarketIndices();
+  }, [loadTickers, loadMarketIndices]);
+
+  // 선택된 지수에 맞춰 종목 필터링
+  const filteredTickers = useMemo(() => {
+    if (!selectedIndex) return tickers;
+    // market 필드가 있는 경우 우선 사용
+    const byField = tickers.filter((t) => t.market === selectedIndex);
+    if (byField.length > 0) return byField;
+    // market 필드가 없으면 ticker 패턴으로 분류
+    const isDomestic = selectedIndex === 'KOSPI' || selectedIndex === 'KOSDAQ';
+    return tickers.filter((t) =>
+      isDomestic ? /^\d{6}$/.test(t.ticker) : !/^\d{6}$/.test(t.ticker),
+    );
+  }, [tickers, selectedIndex]);
 
   const handleSelect = useCallback((item) => {
     setSelected(item);
     setSheetOpen(true);
   }, []);
 
-  return (
-    <SafeAreaView style={styles.safe}>
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
+  const renderItem = useCallback(
+    ({ item }) => <TickerRow item={item} onPress={handleSelect} />,
+    [handleSelect],
+  );
+
+  const keyExtractor = useCallback((item) => item.ticker, []);
+
+  const ListHeader = useMemo(
+    () => (
+      <>
         <ScreenHeader />
         {notice && (
           <View style={styles.noticeBox}>
             <Text style={styles.noticeText}>{notice}</Text>
           </View>
         )}
-        <MarketIndexStrip indices={sampleMarketIndices} />
-        <TickerStatsBar tickers={tickers} />
-        {tickers.length === 0 && !loading ? (
-          <View style={styles.emptyBox}>
-            <Text style={styles.emptyIcon}>📈</Text>
-            <Text style={styles.emptyTitle}>관심 종목이 없어요</Text>
-            <Text style={styles.emptyDesc}>
-              다양한 시장의 종목을 곧 만나실 수 있어요
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.listCard}>
-            {loading
-              ? [1, 2, 3, 4, 5].map((i) => <SkeletonRow key={i} />)
-              : tickers.map((item) => (
-                  <TickerRow
-                    key={item.ticker}
-                    item={item}
-                    onPress={handleSelect}
-                  />
-                ))}
-          </View>
-        )}
-      </ScrollView>
+        <MarketIndexStrip
+          indices={marketIndices}
+          selectedKey={selectedIndex}
+          onSelect={setSelectedIndex}
+        />
+        <TickerStatsBar tickers={filteredTickers} selectedIndex={selectedIndex} />
+      </>
+    ),
+    [notice, marketIndices, selectedIndex, filteredTickers],
+  );
+
+  const ListEmpty = useMemo(
+    () =>
+      loading ? (
+        <View style={styles.listCard}>
+          {[1, 2, 3, 4, 5].map((i) => (
+            <SkeletonRow key={i} />
+          ))}
+        </View>
+      ) : (
+        <View style={styles.emptyBox}>
+          <Text style={styles.emptyIcon}>📈</Text>
+          <Text style={styles.emptyTitle}>
+            {selectedIndex ? `${selectedIndex} 종목이 없어요` : '관심 종목이 없어요'}
+          </Text>
+          <Text style={styles.emptyDesc}>
+            다양한 시장의 종목을 곧 만나실 수 있어요
+          </Text>
+        </View>
+      ),
+    [loading, selectedIndex],
+  );
+
+  return (
+    <SafeAreaView style={styles.safe}>
+      <FlatList
+        data={loading ? [] : filteredTickers}
+        keyExtractor={keyExtractor}
+        renderItem={renderItem}
+        ListHeaderComponent={ListHeader}
+        ListEmptyComponent={ListEmpty}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.content}
+        initialNumToRender={15}
+        maxToRenderPerBatch={10}
+        windowSize={5}
+        removeClippedSubviews
+        style={styles.scroll}
+      />
 
       <TickerDetailSheet
         item={selected}
@@ -331,12 +412,6 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: tdsDark.bgPrimary },
   scroll: { flex: 1 },
   content: { paddingTop: 8, paddingBottom: 32 },
-  center: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-  },
   screenHeader: {
     marginHorizontal: 16,
     marginTop: 4,
@@ -379,7 +454,6 @@ const styles = StyleSheet.create({
   rightBlock: { alignItems: 'flex-end' },
   rateText: { fontSize: 14, fontWeight: '600' },
   priceText: { fontSize: 13, color: tdsDark.textSecondary, marginTop: 2 },
-  emptyText: { color: tdsDark.textSecondary, fontSize: 14 },
   emptyBox: {
     alignItems: 'center',
     paddingVertical: 48,
@@ -433,27 +507,44 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     minWidth: 90,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
     shadowColor: '#000000',
     shadowOpacity: 0.04,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
     elevation: 2,
   },
+  indexCardSelected: {
+    borderColor: tdsColors.blue500,
+    backgroundColor: `${tdsColors.blue500}18`,
+  },
   indexLabel: { fontSize: 11, color: tdsDark.textTertiary, marginBottom: 2 },
+  indexLabelSelected: { color: tdsColors.blue500 },
   indexValue: {
     fontSize: 14,
     fontWeight: '600',
     color: tdsDark.textPrimary,
     marginBottom: 2,
   },
+  indexValueSelected: { color: tdsDark.textPrimary },
   indexChange: { fontSize: 12, fontWeight: '600' },
   detailMeta: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
     marginBottom: 6,
   },
   detailCode: { fontSize: 13, color: tdsDark.textTertiary },
+  detailMarket: {
+    fontSize: 11,
+    color: tdsColors.blue500,
+    fontWeight: '600',
+    backgroundColor: `${tdsColors.blue500}18`,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
   detailRate: { fontSize: 13, fontWeight: '600' },
   detailPrice: {
     fontSize: 28,
@@ -470,10 +561,14 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     gap: 8,
   },
+  statsMarket: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: tdsColors.blue500,
+  },
   statsChip: { fontSize: 13, fontWeight: '600' },
   statsSep: { fontSize: 13, color: tdsDark.textTertiary },
   sheetLabel: { fontSize: 13, color: tdsDark.textSecondary, marginBottom: 4 },
-  sheetPrice: { fontSize: 22, fontWeight: '700', color: tdsDark.textPrimary },
   qtyInput: {
     backgroundColor: tdsDark.bgSecondary,
     borderWidth: 1,
