@@ -7,6 +7,7 @@
  *  - 기본 뷰:   백엔드 /auto-trade/top-tickers (AI 상위 종목)
  *
  * 렌더링: FlatList 가상화 + 페이지당 20개 무한 스크롤
+ * 정렬: 기본 / 등락률 / 현재가 / 이름 (각 오름차순/내림차순 토글)
  */
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
@@ -40,6 +41,57 @@ import { LogoBadge } from '../../components/tds/LogoBadge';
 
 // KOSDAQ는 백엔드 데이터 없음
 const UNAVAILABLE_MARKETS = new Set(['KOSDAQ']);
+
+// ─── 정렬 설정 ───────────────────────────────────────────────────────────────
+const SORT_OPTIONS = [
+  { key: 'default', label: '기본' },
+  { key: 'rate',    label: '등락률' },
+  { key: 'price',   label: '현재가' },
+  { key: 'name',    label: '이름' },
+];
+
+function applySortToTickers(list, sortKey, sortDir) {
+  if (sortKey === 'default') return list;
+  return [...list].sort((a, b) => {
+    if (sortKey === 'name') {
+      const cmp = (a.name ?? '').localeCompare(b.name ?? '', 'ko');
+      return sortDir === 'asc' ? cmp : -cmp;
+    }
+    const valA = sortKey === 'rate' ? (a.today_rate ?? 0) : (a.current_price ?? 0);
+    const valB = sortKey === 'rate' ? (b.today_rate ?? 0) : (b.current_price ?? 0);
+    return sortDir === 'desc' ? valB - valA : valA - valB;
+  });
+}
+
+// ─── 정렬 칩 바 ──────────────────────────────────────────────────────────────
+function SortBar({ sortKey, sortDir, onSort }) {
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={styles.sortBarWrap}
+      contentContainerStyle={styles.sortBarContent}
+    >
+      {SORT_OPTIONS.map((opt) => {
+        const isActive = sortKey === opt.key;
+        const showArrow = isActive && opt.key !== 'default';
+        return (
+          <TouchableOpacity
+            key={opt.key}
+            onPress={() => onSort(opt.key)}
+            activeOpacity={0.75}
+            style={[styles.sortChip, isActive && styles.sortChipActive]}
+          >
+            <Text style={[styles.sortChipText, isActive && styles.sortChipTextActive]}>
+              {opt.label}
+              {showArrow ? (sortDir === 'desc' ? ' ↓' : ' ↑') : ''}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </ScrollView>
+  );
+}
 
 // ─── 스켈레튼 ────────────────────────────────────────────────────────────────
 
@@ -285,6 +337,9 @@ export default function TickerScreen() {
   const [selectedIndex, setSelectedIndex] = useState(null);
   const [marketIndices, setMarketIndices] = useState(sampleMarketIndices);
 
+  const [sortKey, setSortKey] = useState('default');
+  const [sortDir, setSortDir] = useState('desc');
+
   // 진행 중인 로드를 취소하기 위한 ref
   const loadIdRef = useRef(0);
 
@@ -392,12 +447,36 @@ export default function TickerScreen() {
 
   const handleSelectIndex = useCallback((key) => {
     setSelectedIndex(key);
+    // 시장 전환 시 정렬 초기화
+    setSortKey('default');
+    setSortDir('desc');
+  }, []);
+
+  const handleSort = useCallback((key) => {
+    if (key === 'default') {
+      setSortKey('default');
+      return;
+    }
+    setSortKey((prev) => {
+      if (prev === key) {
+        // 같은 키 재선택 → 방향 토글
+        setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'));
+        return key;
+      }
+      setSortDir('desc');
+      return key;
+    });
   }, []);
 
   const handleSelectTicker = useCallback((item) => {
     setSelected(item);
     setSheetOpen(true);
   }, []);
+
+  const sortedTickers = useMemo(
+    () => applySortToTickers(tickers, sortKey, sortDir),
+    [tickers, sortKey, sortDir],
+  );
 
   const renderItem = useCallback(
     ({ item }) => <TickerRow item={item} onPress={handleSelectTicker} />,
@@ -425,15 +504,18 @@ export default function TickerScreen() {
           onSelect={handleSelectIndex}
         />
         {!loading && tickers.length > 0 && (
-          <TickerStatsBar
-            tickers={tickers}
-            selectedIndex={selectedIndex}
-            total={totalCount}
-          />
+          <>
+            <TickerStatsBar
+              tickers={sortedTickers}
+              selectedIndex={selectedIndex}
+              total={totalCount}
+            />
+            <SortBar sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+          </>
         )}
       </>
     ),
-    [notice, marketIndices, selectedIndex, tickers, loading, totalCount, handleSelectIndex],
+    [notice, marketIndices, selectedIndex, tickers, sortedTickers, loading, totalCount, sortKey, sortDir, handleSelectIndex, handleSort],
   );
 
   const ListFooter = useMemo(
@@ -474,7 +556,7 @@ export default function TickerScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <FlatList
-        data={loading ? [] : tickers}
+        data={loading ? [] : sortedTickers}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
         ListHeaderComponent={ListHeader}
@@ -673,6 +755,35 @@ const styles = StyleSheet.create({
   statsChip: { fontSize: 13, fontWeight: '600' },
   statsSep: { fontSize: 13, color: tdsDark.textTertiary },
   statsTotalText: { fontSize: 12, color: tdsDark.textTertiary },
+  sortBarWrap: { flexGrow: 0, marginBottom: 2 },
+  sortBarContent: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    gap: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  sortChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: tdsDark.bgSecondary,
+    borderWidth: 1,
+    borderColor: tdsDark.border,
+  },
+  sortChipActive: {
+    backgroundColor: tdsColors.blue500,
+    borderColor: tdsColors.blue500,
+  },
+  sortChipText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: tdsDark.textSecondary,
+  },
+  sortChipTextActive: {
+    color: '#ffffff',
+    fontWeight: '600',
+  },
   sheetLabel: { fontSize: 13, color: tdsDark.textSecondary, marginBottom: 4 },
   qtyInput: {
     backgroundColor: tdsDark.bgSecondary,
