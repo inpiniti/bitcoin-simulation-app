@@ -506,7 +506,20 @@ function TickerCard({ data, prices, pricesLoading }) {
             {/* 종목명 + 확률 */}
             <View style={styles.tickerInfo}>
               <View style={styles.tickerTopRow}>
-                <Text style={styles.tickerSymbol}>{t.ticker}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={styles.tickerSymbol}>{t.ticker}</Text>
+                  {/* TimesFM 방향 신호 뱃지 */}
+                  {t.timesfm_signal === 'up' && (
+                    <View style={styles.timesfmUp}>
+                      <Text style={styles.timesfmUpText}>▲ TimesFM</Text>
+                    </View>
+                  )}
+                  {t.timesfm_signal === 'down' && (
+                    <View style={styles.timesfmDown}>
+                      <Text style={styles.timesfmDownText}>▼ TimesFM</Text>
+                    </View>
+                  )}
+                </View>
                 <View style={styles.tickerRight}>
                   <Text style={[styles.tickerProb, aboveThreshold && { color: tdsColors.red500 }]}>
                     {probPct}%
@@ -779,6 +792,22 @@ const styles = StyleSheet.create({
     backgroundColor: tdsDark.bgSecondary,
   },
   tickerChangeText: { fontSize: 11, fontWeight: '600', color: tdsDark.textSecondary },
+
+  // TimesFM 방향 신호 뱃지
+  timesfmUp: {
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 5,
+    backgroundColor: `${tdsColors.red500}22`,
+  },
+  timesfmUpText: { fontSize: 10, fontWeight: '700', color: tdsColors.red500 },
+  timesfmDown: {
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 5,
+    backgroundColor: `${tdsColors.blue500}22`,
+  },
+  timesfmDownText: { fontSize: 10, fontWeight: '700', color: tdsColors.blue500 },
 });
 
 // ─── 달력 Styles ──────────────────────────────────────────────────────────────
