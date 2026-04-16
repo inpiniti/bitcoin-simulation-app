@@ -537,12 +537,6 @@ function TickerCard({ data, prices, pricesLoading }) {
           </View>
         )}
 
-        {/* 종가 컬럼 헤더 */}
-        <View style={styles.tickerPriceHeader}>
-          <Text style={styles.tickerPriceHeaderLabel}>당일 종가</Text>
-          <Text style={styles.tickerPriceHeaderLabel}>다음날 종가</Text>
-          <Text style={styles.tickerPriceHeaderLabel}>등락</Text>
-        </View>
       </View>
 
       {/* ── 종목 목록 (full-width) ── */}
