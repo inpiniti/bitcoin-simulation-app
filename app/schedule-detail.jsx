@@ -438,9 +438,9 @@ function TickersTab({ settingId, settingName, activeDates, onActiveDatesChange }
           <ActivityIndicator color={tdsColors.blue500} />
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.tabContent}>
+        <ScrollView contentContainerStyle={styles.tickersTabContent}>
           {useSample && (
-            <View style={styles.noticeBox}>
+            <View style={[styles.noticeBox, { marginHorizontal: 16 }]}>
               <Text style={styles.noticeText}>샘플 데이터로 표시 중입니다.</Text>
             </View>
           )}
@@ -449,7 +449,7 @@ function TickersTab({ settingId, settingName, activeDates, onActiveDatesChange }
             <View style={styles.emptyBox}>
               <Text style={styles.emptyIcon}>📈</Text>
               <Text style={styles.emptyTitle}>{selectedDate} 종목 데이터 없음</Text>
-              <Text style={styles.emptyDesc}>자동매매 실행 후 TOP10이 저장됩니다</Text>
+              <Text style={styles.emptyDesc}>자동매매 실행 후 TOP20이 저장됩니다</Text>
             </View>
           ) : (
             <TickerCard data={tickerData} prices={prices} pricesLoading={pricesLoading} />
@@ -465,16 +465,78 @@ function TickerCard({ data, prices, pricesLoading }) {
   const rawTickers = data.tickers ?? [];
   const tickers = typeof rawTickers === 'string' ? JSON.parse(rawTickers) : rawTickers;
 
+  // ── 통계 계산 ──────────────────────────────────────────────
+  const getChangePct = (t) => {
+    const p = prices[t.ticker];
+    if (p?.tradeClose == null || p?.nextClose == null) return null;
+    return ((p.nextClose - p.tradeClose) / p.tradeClose) * 100;
+  };
+
+  const withPrice = tickers.filter(t => getChangePct(t) !== null);
+  const allChanges = withPrice.map(t => getChangePct(t));
+  const avgAll = allChanges.length > 0
+    ? allChanges.reduce((a, b) => a + b, 0) / allChanges.length : null;
+  const upAll = allChanges.filter(v => v > 0).length;
+  const upRatioAll = allChanges.length > 0 ? (upAll / allChanges.length) * 100 : null;
+
+  const tfUpTickers = withPrice.filter(t => t.timesfm_signal === 'up');
+  const tfChanges = tfUpTickers.map(t => getChangePct(t));
+  const avgTf = tfChanges.length > 0
+    ? tfChanges.reduce((a, b) => a + b, 0) / tfChanges.length : null;
+  const upTf = tfChanges.filter(v => v > 0).length;
+  const upRatioTf = tfChanges.length > 0 ? (upTf / tfChanges.length) * 100 : null;
+
+  const hasStats = !pricesLoading && allChanges.length > 0;
+
   return (
     <View>
-      {/* 요약 */}
-      <View style={styles.tickerSummary}>
-        <Text style={styles.tickerSummaryTitle}>
-          매수 후보 TOP{tickers.length}
-        </Text>
+      {/* ── 요약 카드 ── */}
+      <View style={[styles.tickerSummary, { marginHorizontal: 16 }]}>
         <Text style={styles.tickerSummaryDesc}>
-          기준 확률 {(threshold * 100).toFixed(0)}% · 전체 {data.total_scanned ?? '-'}종목 스캔
+          전체 {data.total_scanned ?? '-'}종목 스캔 · TOP{tickers.length}
         </Text>
+
+        {/* 통계 블록 */}
+        {hasStats && (
+          <View style={styles.tickerStatsRow}>
+            {/* 전체 평균 */}
+            <View style={styles.tickerStatBlock}>
+              <Text style={styles.tickerStatLabel}>전체 평균</Text>
+              <Text style={[
+                styles.tickerStatValue,
+                avgAll > 0 ? { color: tdsColors.red500 } : { color: tdsColors.blue500 },
+              ]}>
+                {avgAll > 0 ? '+' : ''}{avgAll.toFixed(1)}%
+              </Text>
+              <Text style={styles.tickerStatSub}>
+                적중 {upRatioAll.toFixed(0)}%{'\n'}{upAll}/{allChanges.length}종목
+              </Text>
+            </View>
+
+            <View style={styles.tickerStatDivider} />
+
+            {/* TimesFM ▲ 평균 */}
+            <View style={styles.tickerStatBlock}>
+              <Text style={[styles.tickerStatLabel, { color: tdsColors.red500 }]}>▲ TimesFM 평균</Text>
+              {avgTf !== null ? (
+                <>
+                  <Text style={[
+                    styles.tickerStatValue,
+                    avgTf > 0 ? { color: tdsColors.red500 } : { color: tdsColors.blue500 },
+                  ]}>
+                    {avgTf > 0 ? '+' : ''}{avgTf.toFixed(1)}%
+                  </Text>
+                  <Text style={styles.tickerStatSub}>
+                    적중 {upRatioTf.toFixed(0)}%{'\n'}{upTf}/{tfChanges.length}종목
+                  </Text>
+                </>
+              ) : (
+                <Text style={styles.tickerStatSub}>데이터 없음</Text>
+              )}
+            </View>
+          </View>
+        )}
+
         {/* 종가 컬럼 헤더 */}
         <View style={styles.tickerPriceHeader}>
           <Text style={styles.tickerPriceHeaderLabel}>당일 종가</Text>
@@ -483,7 +545,7 @@ function TickerCard({ data, prices, pricesLoading }) {
         </View>
       </View>
 
-      {/* 종목 목록 */}
+      {/* ── 종목 목록 (full-width) ── */}
       {tickers.map((t, i) => {
         const aboveThreshold = t.buy_prob >= threshold;
         const probPct = (t.buy_prob * 100).toFixed(1);
@@ -679,6 +741,7 @@ const styles = StyleSheet.create({
 
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 40 },
   tabContent: { paddingHorizontal: 16, paddingVertical: 12, paddingBottom: 32 },
+  tickersTabContent: { paddingVertical: 12, paddingBottom: 32 },
 
   noticeBox: {
     marginBottom: 12,
@@ -736,8 +799,26 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 10,
   },
-  tickerSummaryTitle: { fontSize: 15, fontWeight: '700', color: tdsDark.textPrimary, marginBottom: 4 },
-  tickerSummaryDesc: { fontSize: 12, color: tdsDark.textSecondary, marginBottom: 8 },
+  tickerSummaryDesc: { fontSize: 12, color: tdsDark.textSecondary, marginBottom: 10 },
+
+  // 통계 블록
+  tickerStatsRow: {
+    flexDirection: 'row',
+    marginBottom: 10,
+    gap: 0,
+  },
+  tickerStatBlock: {
+    flex: 1,
+    gap: 3,
+  },
+  tickerStatDivider: {
+    width: StyleSheet.hairlineWidth,
+    backgroundColor: tdsDark.border,
+    marginHorizontal: 12,
+  },
+  tickerStatLabel: { fontSize: 11, color: tdsDark.textTertiary, fontWeight: '600' },
+  tickerStatValue: { fontSize: 18, fontWeight: '700', color: tdsDark.textPrimary },
+  tickerStatSub: { fontSize: 11, color: tdsDark.textTertiary, lineHeight: 16 },
 
   tickerPriceHeader: {
     flexDirection: 'row',
