@@ -531,7 +531,7 @@ function TickerCard({ data, prices, pricesLoading, marketIndex, onBackfill, back
 
   return (
     <View>
-      {/* ── 요약 카드 ── */}
+      {/* 요약 카드 */}
       <View style={[styles.tickerSummary, { marginHorizontal: 16 }]}>
         <Text style={styles.tickerSummaryDesc}>
           전체 {data.total_scanned ?? '-'}종목 스캔 · TOP{tickers.length}
@@ -540,27 +540,11 @@ function TickerCard({ data, prices, pricesLoading, marketIndex, onBackfill, back
         {/* 통계 블록 */}
         {hasStats && (
           <View style={styles.tickerStatsRow}>
-            {/* 전체 평균 */}
-            <View style={styles.tickerStatBlock}>
-              <Text style={styles.tickerStatLabel}>전체 평균</Text>
-              <Text style={[
-                styles.tickerStatValue,
-                avgAll > 0 ? { color: tdsColors.red500 } : { color: tdsColors.blue500 },
-              ]}>
-                {avgAll > 0 ? '+' : ''}{avgAll.toFixed(1)}%
-              </Text>
-              <Text style={styles.tickerStatSub}>
-                적중 {upRatioAll.toFixed(0)}%{'\n'}{upAll}/{allChanges.length}종목
-              </Text>
-            </View>
-
-            <View style={styles.tickerStatDivider} />
-
-            {/* 시장 지수 */}
-            {marketIndex && (
+            {/* 1. 지수 변화율 */}
+            {marketIndex ? (
               <>
                 <View style={styles.tickerStatBlock}>
-                  <Text style={styles.tickerStatLabel}>{marketIndex.label}</Text>
+                  <Text style={styles.tickerStatLabel}>{marketIndex.label} (지수)</Text>
                   {marketIndex.changePct !== null ? (
                     <Text style={[
                       styles.tickerStatValue,
@@ -574,11 +558,27 @@ function TickerCard({ data, prices, pricesLoading, marketIndex, onBackfill, back
                 </View>
                 <View style={styles.tickerStatDivider} />
               </>
-            )}
+            ) : null}
 
-            {/* TimesFM ▲ 평균 */}
+            {/* 2. 우리가 만든 모델 평균 */}
             <View style={styles.tickerStatBlock}>
-              <Text style={[styles.tickerStatLabel, { color: tdsColors.red500 }]}>▲ TimesFM 평균</Text>
+              <Text style={styles.tickerStatLabel}>우리가 만든 모델 평균</Text>
+              <Text style={[
+                styles.tickerStatValue,
+                avgAll > 0 ? { color: tdsColors.red500 } : { color: tdsColors.blue500 },
+              ]}>
+                {avgAll > 0 ? '+' : ''}{avgAll.toFixed(1)}%
+              </Text>
+              <Text style={styles.tickerStatSub}>
+                적중 {upRatioAll.toFixed(0)}%{'\n'}{upAll}/{allChanges.length}종목
+              </Text>
+            </View>
+
+            <View style={styles.tickerStatDivider} />
+
+            {/* 3. TimesFM 평균 */}
+            <View style={styles.tickerStatBlock}>
+              <Text style={[styles.tickerStatLabel, { color: tdsColors.red500 }]}>TimesFM 평균</Text>
               {avgTf !== null ? (
                 <>
                   <Text style={[
