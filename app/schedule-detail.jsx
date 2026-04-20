@@ -28,6 +28,7 @@ import {
   fetchTopTickersByDate,
   fetchDlTradeLogs,
   fetchTopTickersLog,
+  backfillTimesFM,
 } from '../lib/tradingApi';
 import { fetchAllTickerCloses } from '../lib/priceApi';
 import {
@@ -348,6 +349,8 @@ function TickersTab({ settingId, settingName, activeDates, onActiveDatesChange }
   const [useSample, setUseSample] = useState(false);
   const [prices, setPrices] = useState({});
   const [pricesLoading, setPricesLoading] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // 초기화: 활성 날짜 로드
   useEffect(() => {
@@ -403,7 +406,22 @@ function TickersTab({ settingId, settingName, activeDates, onActiveDatesChange }
         setLoading(false);
       }
     })();
-  }, [selectedDate, settingId, useSample]);
+  }, [selectedDate, settingId, useSample, refreshKey]);
+
+  const handleBackfill = async () => {
+    if (!tickerData?.id) return;
+    setBackfilling(true);
+    try {
+      const { error } = await backfillTimesFM(String(tickerData.id), selectedDate);
+      if (error) {
+        Alert.alert('오류', `TimesFM 보정 실패: ${error.message}`);
+      } else {
+        setRefreshKey((k) => k + 1);
+      }
+    } finally {
+      setBackfilling(false);
+    }
+  };
 
   // 종가 조회: tickerData 또는 selectedDate 변경 시
   useEffect(() => {
@@ -452,7 +470,13 @@ function TickersTab({ settingId, settingName, activeDates, onActiveDatesChange }
               <Text style={styles.emptyDesc}>자동매매 실행 후 TOP20이 저장됩니다</Text>
             </View>
           ) : (
-            <TickerCard data={tickerData} prices={prices} pricesLoading={pricesLoading} />
+            <TickerCard
+              data={tickerData}
+              prices={prices}
+              pricesLoading={pricesLoading}
+              onBackfill={handleBackfill}
+              backfilling={backfilling}
+            />
           )}
         </ScrollView>
       )}
@@ -460,10 +484,11 @@ function TickersTab({ settingId, settingName, activeDates, onActiveDatesChange }
   );
 }
 
-function TickerCard({ data, prices, pricesLoading }) {
+function TickerCard({ data, prices, pricesLoading, onBackfill, backfilling }) {
   const threshold = data.buy_threshold ?? 0.6;
   const rawTickers = data.tickers ?? [];
   const tickers = typeof rawTickers === 'string' ? JSON.parse(rawTickers) : rawTickers;
+  const hasMissingTimesFM = tickers.some((t) => t.timesfm_signal == null);
 
   // ── 통계 계산 ──────────────────────────────────────────────
   const getChangePct = (t) => {
@@ -537,6 +562,20 @@ function TickerCard({ data, prices, pricesLoading }) {
           </View>
         )}
 
+        {/* TimesFM 보정 버튼 */}
+        {hasMissingTimesFM && (
+          <TouchableOpacity
+            style={styles.backfillButton}
+            onPress={onBackfill}
+            disabled={backfilling}
+          >
+            {backfilling ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.backfillButtonText}>▲ TimesFM 보정 실행</Text>
+            )}
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* ── 종목 목록 (full-width) ── */}
@@ -794,6 +833,14 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   tickerSummaryDesc: { fontSize: 12, color: tdsDark.textSecondary, marginBottom: 10 },
+  backfillButton: {
+    backgroundColor: tdsColors.red500,
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  backfillButtonText: { color: '#fff', fontSize: 13, fontWeight: '700' },
 
   // 통계 블록
   tickerStatsRow: {
