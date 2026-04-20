@@ -30,7 +30,8 @@ import {
   fetchTopTickersLog,
   backfillTimesFM,
 } from '../lib/tradingApi';
-import { fetchAllTickerCloses, fetchGroupIndexByDate } from '../lib/priceApi';
+import { fetchAllTickerCloses, fetchGroupIndexByDate, getIndexSymbol } from '../lib/priceApi';
+import { fetchIndexPrediction } from '../lib/tradingApi';
 import {
   sampleSettings,
   sampleDlTradeLogs,
@@ -344,7 +345,7 @@ function StatChip({ label, value, color, bold }) {
 
 const SUPPORTED_INDEX_GROUPS = new Set(['sp500', 'qqq', 'nasdaq100', 'kospi', 'kosdaq']);
 
-function TickersTab({ settingId, settingName, tickerGroupKey, activeDates, onActiveDatesChange }) {
+function TickersTab({ settingId, settingName, tickerGroupKey, aiModelKey, activeDates, onActiveDatesChange }) {
   const [selectedDate, setSelectedDate] = useState(() => toDateStr(new Date()));
   const [tickerData, setTickerData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -354,6 +355,7 @@ function TickersTab({ settingId, settingName, tickerGroupKey, activeDates, onAct
   const [backfilling, setBackfilling] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [marketIndex, setMarketIndex] = useState(null);
+  const [indexPrediction, setIndexPrediction] = useState(null);
 
   // 초기화: 활성 날짜 로드
   useEffect(() => {
@@ -458,6 +460,19 @@ function TickersTab({ settingId, settingName, tickerGroupKey, activeDates, onAct
       .catch(() => setMarketIndex(null));
   }, [selectedDate, tickerGroupKey]);
 
+  // 지수 예측 조회: XGBoost + TimesFM을 지수 데이터로 실행 (백엔드)
+  useEffect(() => {
+    const symbol = getIndexSymbol(tickerGroupKey);
+    if (!selectedDate || !symbol || !aiModelKey) {
+      setIndexPrediction(null);
+      return;
+    }
+    setIndexPrediction(null);
+    fetchIndexPrediction(symbol, selectedDate, aiModelKey)
+      .then(({ data }) => setIndexPrediction(data ?? null))
+      .catch(() => setIndexPrediction(null));
+  }, [selectedDate, tickerGroupKey, aiModelKey]);
+
   return (
     <View style={{ flex: 1 }}>
       <WeekCalendar
@@ -490,6 +505,7 @@ function TickersTab({ settingId, settingName, tickerGroupKey, activeDates, onAct
               prices={prices}
               pricesLoading={pricesLoading}
               marketIndex={marketIndex}
+              indexPrediction={indexPrediction}
               onBackfill={handleBackfill}
               backfilling={backfilling}
             />
@@ -500,7 +516,7 @@ function TickersTab({ settingId, settingName, tickerGroupKey, activeDates, onAct
   );
 }
 
-function TickerCard({ data, prices, pricesLoading, marketIndex, onBackfill, backfilling }) {
+function TickerCard({ data, prices, pricesLoading, marketIndex, indexPrediction, onBackfill, backfilling }) {
   const threshold = data.buy_threshold ?? 0.6;
   const rawTickers = data.tickers ?? [];
   const tickers = typeof rawTickers === 'string' ? JSON.parse(rawTickers) : rawTickers;
@@ -526,13 +542,6 @@ function TickerCard({ data, prices, pricesLoading, marketIndex, onBackfill, back
     ? tfChanges.reduce((a, b) => a + b, 0) / tfChanges.length : null;
   const upTf = tfChanges.filter(v => v > 0).length;
   const upRatioTf = tfChanges.length > 0 ? (upTf / tfChanges.length) * 100 : null;
-
-  // 예측 통계 (가격 데이터 불필요)
-  const avgBuyProb = tickers.length > 0
-    ? tickers.reduce((s, t) => s + (t.buy_prob ?? 0), 0) / tickers.length * 100
-    : null;
-  const tfSignalUpCount = tickers.filter(t => t.timesfm_signal === 'up').length;
-  const tfSignalTotal = tickers.filter(t => t.timesfm_signal != null).length;
 
   const hasStats = !pricesLoading && allChanges.length > 0;
 
@@ -563,32 +572,37 @@ function TickerCard({ data, prices, pricesLoading, marketIndex, onBackfill, back
 
           <View style={styles.tickerStatDivider} />
 
-          {/* 우리 모델 예측 (상승가능성 %) */}
+          {/* 2. 모델 예측 (지수 데이터 기반 XGBoost 상승 확률) */}
           <View style={styles.tickerStatBlock}>
             <Text style={styles.tickerStatLabel}>모델 예측</Text>
-            {avgBuyProb != null ? (
+            {indexPrediction?.buy_prob != null ? (
               <Text style={[styles.tickerStatValue, { fontSize: 16 }]}>
-                {avgBuyProb.toFixed(1)}%
+                {(indexPrediction.buy_prob * 100).toFixed(1)}%
               </Text>
             ) : (
-              <Text style={styles.tickerStatSub}>-</Text>
+              <Text style={styles.tickerStatSub}>예측 중...</Text>
             )}
             <Text style={styles.tickerStatSub}>상승 가능성</Text>
           </View>
 
           <View style={styles.tickerStatDivider} />
 
-          {/* TimesFM 예측 (상승/하락 비율) */}
+          {/* 3. TimesFM 예측 (지수 데이터 기반 방향 신호) */}
           <View style={styles.tickerStatBlock}>
             <Text style={[styles.tickerStatLabel, { color: tdsColors.red500 }]}>TimesFM 예측</Text>
-            {tfSignalTotal > 0 ? (
-              <Text style={[styles.tickerStatValue, { fontSize: 16, color: tdsColors.red500 }]}>
-                {tfSignalUpCount}/{tfSignalTotal} ▲
+            {indexPrediction?.timesfm_signal ? (
+              <Text style={[
+                styles.tickerStatValue, { fontSize: 16 },
+                indexPrediction.timesfm_signal === 'up'
+                  ? { color: tdsColors.red500 }
+                  : { color: tdsColors.blue500 },
+              ]}>
+                {indexPrediction.timesfm_signal === 'up' ? '▲ 상승' : '▼ 하락'}
               </Text>
             ) : (
-              <Text style={styles.tickerStatSub}>데이터 없음</Text>
+              <Text style={styles.tickerStatSub}>예측 중...</Text>
             )}
-            <Text style={styles.tickerStatSub}>상승 신호</Text>
+            <Text style={styles.tickerStatSub}>예측 방향</Text>
           </View>
         </View>
 
@@ -818,6 +832,7 @@ export default function ScheduleDetailScreen() {
             settingId={settingId}
             settingName={settingName}
             tickerGroupKey={ticker_group_key}
+            aiModelKey={ai_model_key}
             activeDates={activeDates}
             onActiveDatesChange={setTickerActiveDates}
           />
