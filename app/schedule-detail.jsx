@@ -356,6 +356,7 @@ function TickersTab({ settingId, settingName, tickerGroupKey, aiModelKey, active
   const [refreshKey, setRefreshKey] = useState(0);
   const [marketIndex, setMarketIndex] = useState(null);
   const [indexPrediction, setIndexPrediction] = useState(null);
+  const [indexPredictionLoading, setIndexPredictionLoading] = useState(false);
 
   // 초기화: 활성 날짜 로드
   useEffect(() => {
@@ -465,12 +466,15 @@ function TickersTab({ settingId, settingName, tickerGroupKey, aiModelKey, active
     const symbol = getIndexSymbol(tickerGroupKey);
     if (!selectedDate || !symbol || !aiModelKey) {
       setIndexPrediction(null);
+      setIndexPredictionLoading(false);
       return;
     }
     setIndexPrediction(null);
+    setIndexPredictionLoading(true);
     fetchIndexPrediction(symbol, selectedDate, aiModelKey)
       .then(({ data }) => setIndexPrediction(data ?? null))
-      .catch(() => setIndexPrediction(null));
+      .catch(() => setIndexPrediction(null))
+      .finally(() => setIndexPredictionLoading(false));
   }, [selectedDate, tickerGroupKey, aiModelKey]);
 
   return (
@@ -506,6 +510,7 @@ function TickersTab({ settingId, settingName, tickerGroupKey, aiModelKey, active
               pricesLoading={pricesLoading}
               marketIndex={marketIndex}
               indexPrediction={indexPrediction}
+              indexPredictionLoading={indexPredictionLoading}
               onBackfill={handleBackfill}
               backfilling={backfilling}
             />
@@ -516,7 +521,7 @@ function TickersTab({ settingId, settingName, tickerGroupKey, aiModelKey, active
   );
 }
 
-function TickerCard({ data, prices, pricesLoading, marketIndex, indexPrediction, onBackfill, backfilling }) {
+function TickerCard({ data, prices, pricesLoading, marketIndex, indexPrediction, indexPredictionLoading, onBackfill, backfilling }) {
   const threshold = data.buy_threshold ?? 0.6;
   const rawTickers = data.tickers ?? [];
   const tickers = typeof rawTickers === 'string' ? JSON.parse(rawTickers) : rawTickers;
@@ -580,7 +585,9 @@ function TickerCard({ data, prices, pricesLoading, marketIndex, indexPrediction,
                 {(indexPrediction.buy_prob * 100).toFixed(1)}%
               </Text>
             ) : (
-              <Text style={styles.tickerStatSub}>예측 중...</Text>
+              <Text style={styles.tickerStatSub}>
+                {indexPredictionLoading ? '예측 중...' : '데이터 없음'}
+              </Text>
             )}
             <Text style={styles.tickerStatSub}>상승 가능성</Text>
           </View>
@@ -600,7 +607,9 @@ function TickerCard({ data, prices, pricesLoading, marketIndex, indexPrediction,
                 {indexPrediction.timesfm_signal === 'up' ? '▲ 상승' : '▼ 하락'}
               </Text>
             ) : (
-              <Text style={styles.tickerStatSub}>예측 중...</Text>
+              <Text style={styles.tickerStatSub}>
+                {indexPredictionLoading ? '예측 중...' : '데이터 없음'}
+              </Text>
             )}
             <Text style={styles.tickerStatSub}>예측 방향</Text>
           </View>
