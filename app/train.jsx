@@ -1,5 +1,5 @@
 /**
- * 학습 화면 — 새 XGBoost 모델 학습
+ * 학습 화면 — XGBoost / 강화학습(RL) 모델 학습
  * 단일 종목 / 그룹 선택 모드 지원
  * 마운트 시 서버 상태 폴링으로 진행 중인 학습 복원
  */
@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { tdsDark, tdsColors } from '../constants/tdsColors';
 import { Button } from '../components/tds/Button';
 import { WS_TRAIN_URL, fetchTrainStatus } from '../lib/xgbApi';
+import { startRlTrain, fetchRlTrainStatus } from '../lib/rlApi';
 
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
 
@@ -57,6 +58,13 @@ const ALL_PERIODS = [
   { key: 730,  label: '2년' },
   { key: 1825, label: '5년' },
   { key: 9999, label: 'Max' },
+];
+
+// RL PPO 학습 스텝 수 옵션
+const RL_TIMESTEP_OPTIONS = [
+  { key: 100_000, label: '10만', desc: '빠름 (~5분)' },
+  { key: 300_000, label: '30만', desc: '권장 (~15분)' },
+  { key: 1_000_000, label: '100만', desc: '정밀 (~1시간)' },
 ];
 
 // ─── 모드 탭 ──────────────────────────────────────────────────────────────────
@@ -123,12 +131,16 @@ function ProgressBar({ label, progress, color }) {
 export default function TrainScreen() {
   const router = useRouter();
 
+  // 알고리즘 선택: 'xgb' | 'rl'
+  const [algo, setAlgo] = useState('xgb');
+
   // 선택 상태
   const [mode, setMode] = useState('group');   // 'single' | 'group'
   const [ticker, setTicker] = useState('AAPL');
   const [group, setGroup] = useState('sp500');
   const [stage, setStage] = useState(6);
   const [period, setPeriod] = useState(365);
+  const [totalTimesteps, setTotalTimesteps] = useState(300_000);  // RL 전용
 
   // stage 변경 시 period가 최솟값 미달이면 자동 보정
   const handleStageChange = (s) => {
@@ -158,14 +170,25 @@ export default function TrainScreen() {
   useEffect(() => {
     (async () => {
       try {
+        // XGBoost 상태 복원
         const job = await fetchTrainStatus();
         if (job.status === 'collecting' || job.status === 'training') {
+          setAlgo('xgb');
           setIsTraining(true);
           setCollectProgress(job.collect_progress ?? 0);
           setTrainProgress(job.train_progress ?? 0);
-          setLogs([`[복원] 서버에서 학습 중: ${job.model_name || ''}`]);
-          // 기존 학습이 진행 중이면 WebSocket 재연결 시도
+          setLogs([`[복원] 서버에서 XGBoost 학습 중: ${job.model_name || ''}`]);
           connectWs({ reconnect: true, serverModelName: job.model_name });
+          return;
+        }
+        // RL 상태 복원
+        const rlJob = await fetchRlTrainStatus();
+        if (rlJob.status === 'collecting' || rlJob.status === 'training') {
+          setAlgo('rl');
+          setIsTraining(true);
+          setCollectProgress(rlJob.collect_progress ?? 0);
+          setTrainProgress(rlJob.train_progress ?? 0);
+          setLogs([`[복원] 서버에서 RL 학습 중: ${rlJob.model_name || ''}`]);
         } else if (job.status === 'complete' && job.result) {
           setDone(true);
           setCollectProgress(100);
@@ -263,7 +286,64 @@ export default function TrainScreen() {
     }
   }, [mode, ticker, group, period]);
 
-  // ── 학습 시작 ─────────────────────────────────────────────────────────────
+  // ── RL 학습 시작 ──────────────────────────────────────────────────────────
+  const startRlTrainSession = useCallback(() => {
+    if (isTraining) return;
+    if (mode === 'single' && !ticker.trim()) {
+      setError('종목 코드를 입력해주세요.');
+      return;
+    }
+
+    const periodLabel = period === 9999 ? 'max' : `${period}d`;
+    const modelName = mode === 'group'
+      ? `RL_PPO_${group}_s${stage}_${periodLabel}`
+      : `RL_PPO_${ticker.toUpperCase()}_s${stage}_${periodLabel}`;
+
+    setIsTraining(true);
+    setCollectProgress(0);
+    setTrainProgress(0);
+    setLogs([`RL(PPO) 학습을 시작합니다. 모델: ${modelName}`]);
+    setDone(false);
+    setError(null);
+    setNotice(null);
+    doneRef.current = false;
+
+    const ws = startRlTrain({
+      group: mode === 'group' ? group : undefined,
+      ticker: mode === 'single' ? ticker.trim().toUpperCase() : undefined,
+      period: period === 9999 ? 36500 : period,
+      stage,
+      totalTimesteps,
+      modelName,
+      onCollection: (pct) => {
+        setCollectProgress(pct);
+        if (pct % 10 === 0 || pct === 100)
+          setLogs((prev) => [...prev, `[수집] ${pct}%`]);
+      },
+      onTraining: (pct, message) => {
+        setTrainProgress(pct);
+        if (message) setLogs((prev) => [...prev, `[학습] ${message}`]);
+        else if (pct === 100) setLogs((prev) => [...prev, '[학습] 완료']);
+      },
+      onComplete: (result) => {
+        doneRef.current = true;
+        setDone(true);
+        setIsTraining(false);
+        setCollectProgress(100);
+        setTrainProgress(100);
+        setLogs((prev) => [...prev, `✅ 학습 완료! 모델 ID: ${result?.modelId || ''}`]);
+        setNotice(`RL 모델 저장 완료. ${result?.episodeCount || 0}개 종목, ${(result?.totalTimesteps || 0).toLocaleString()} 스텝`);
+      },
+      onError: (msg) => {
+        setError(`오류: ${msg}`);
+        setIsTraining(false);
+        setLogs((prev) => [...prev, `[오류] ${msg}`]);
+      },
+    });
+    wsRef.current = ws;
+  }, [isTraining, mode, ticker, group, stage, period, totalTimesteps]);
+
+  // ── 학습 시작 (XGBoost) ───────────────────────────────────────────────────
   const startTrain = useCallback(() => {
     if (isTraining) return;
 
@@ -285,6 +365,12 @@ export default function TrainScreen() {
     connectWs();
   }, [isTraining, mode, ticker, connectWs]);
 
+  // ── 공통 학습 시작 핸들러 ──────────────────────────────────────────────────
+  const handleStartTrain = useCallback(() => {
+    if (algo === 'rl') startRlTrainSession();
+    else startTrain();
+  }, [algo, startRlTrainSession, startTrain]);
+
   // ── 언마운트 정리 ─────────────────────────────────────────────────────────
   useEffect(() => {
     return () => { wsRef.current?.close(); };
@@ -292,9 +378,10 @@ export default function TrainScreen() {
 
   // ── 모델 이름 미리보기 ────────────────────────────────────────────────────
   const periodLabel = period === 9999 ? 'max' : `${period}d`;
+  const prefix = algo === 'rl' ? 'RL_PPO' : 'XGB';
   const previewName = mode === 'group'
-    ? `XGB_${group}_s${stage}_${periodLabel}`
-    : `XGB_${(ticker || 'AAPL').toUpperCase()}_s${stage}_${periodLabel}`;
+    ? `${prefix}_${group}_s${stage}_${periodLabel}`
+    : `${prefix}_${(ticker || 'AAPL').toUpperCase()}_s${stage}_${periodLabel}`;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -304,7 +391,7 @@ export default function TrainScreen() {
           <Ionicons name="chevron-back" size={22} color={tdsDark.textPrimary} />
           <Text style={styles.backText}>뒤로</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>새 모델 학습</Text>
+        <Text style={styles.headerTitle}>새 모델 학습 ({algo === 'rl' ? 'RL' : 'XGBoost'})</Text>
         <View style={styles.headerRight} />
       </View>
 
@@ -323,8 +410,35 @@ export default function TrainScreen() {
           </View>
         )}
 
+        {/* 알고리즘 선택 */}
+        <Text style={styles.fieldLabel}>알고리즘</Text>
+        <View style={styles.algoRow}>
+          {[{ key: 'xgb', label: 'XGBoost', sub: '빠름·분류' }, { key: 'rl', label: '강화학습 (RL)', sub: 'PPO·직접매매' }].map((a) => (
+            <TouchableOpacity
+              key={a.key}
+              style={[styles.algoBtn, algo === a.key && styles.algoBtnActive]}
+              onPress={() => !isTraining && setAlgo(a.key)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.algoBtnLabel, algo === a.key && styles.algoBtnLabelActive]}>{a.label}</Text>
+              <Text style={[styles.algoBtnSub, algo === a.key && styles.algoBtnSubActive]}>{a.sub}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* RL 설명 */}
+        {algo === 'rl' && (
+          <View style={styles.rlInfoBox}>
+            <Text style={styles.rlInfoText}>
+              강화학습은 에이전트가 직접 매수·홀드·매도를 결정합니다.{'\n'}
+              임계값 설정 없이 스스로 최적 매매 전략을 학습합니다.{'\n'}
+              학습 시간: 약 15분~1시간 (스텝 수에 따라 다름)
+            </Text>
+          </View>
+        )}
+
         {/* 모드 선택 */}
-        <Text style={styles.fieldLabel}>학습 대상</Text>
+        <Text style={[styles.fieldLabel, { marginTop: 20 }]}>학습 대상</Text>
         <ModeTab mode={mode} onChange={setMode} disabled={isTraining} />
 
         {/* 단일 종목 입력 */}
@@ -377,6 +491,19 @@ export default function TrainScreen() {
           disabled={isTraining}
         />
 
+        {/* RL 학습 스텝 수 */}
+        {algo === 'rl' && (
+          <>
+            <Text style={[styles.fieldLabel, { marginTop: 20 }]}>학습 스텝 수 (PPO)</Text>
+            <ChipSelector
+              options={RL_TIMESTEP_OPTIONS.map((o) => ({ key: o.key, label: `${o.label} · ${o.desc}` }))}
+              value={totalTimesteps}
+              onChange={setTotalTimesteps}
+              disabled={isTraining}
+            />
+          </>
+        )}
+
         {/* 모델 이름 미리보기 */}
         <View style={styles.previewRow}>
           <Text style={styles.previewLabel}>모델 이름</Text>
@@ -385,12 +512,14 @@ export default function TrainScreen() {
 
         {/* 학습 버튼 */}
         <Button
-          onPress={startTrain}
+          onPress={handleStartTrain}
           display="full"
           loading={isTraining}
           style={{ marginTop: 24 }}
         >
-          {isTraining ? '학습 중...' : done ? '다시 학습하기' : '학습하기'}
+          {isTraining
+            ? algo === 'rl' ? 'PPO 학습 중... (시간이 걸려요)' : '학습 중...'
+            : done ? '다시 학습하기' : algo === 'rl' ? 'RL 학습 시작' : '학습하기'}
         </Button>
 
         {/* 완료 버튼 */}
@@ -568,4 +697,38 @@ const styles = StyleSheet.create({
     marginBottom: 2,
     lineHeight: 16,
   },
+
+  // 알고리즘 선택
+  algoRow: { flexDirection: 'row', gap: 10 },
+  algoBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: tdsDark.border,
+    backgroundColor: tdsDark.bgCard,
+    alignItems: 'center',
+    gap: 3,
+  },
+  algoBtnActive: {
+    borderColor: tdsColors.blue500,
+    backgroundColor: `${tdsColors.blue500}18`,
+  },
+  algoBtnLabel: { fontSize: 14, fontWeight: '700', color: tdsDark.textSecondary },
+  algoBtnLabelActive: { color: tdsColors.blue500 },
+  algoBtnSub: { fontSize: 11, color: tdsDark.textTertiary },
+  algoBtnSubActive: { color: `${tdsColors.blue500}bb` },
+
+  // RL 설명 박스
+  rlInfoBox: {
+    marginTop: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: `${tdsColors.blue500}10`,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: `${tdsColors.blue500}30`,
+  },
+  rlInfoText: { fontSize: 12, lineHeight: 18, color: tdsDark.textSecondary },
 });
