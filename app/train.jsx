@@ -165,6 +165,7 @@ export default function TrainScreen() {
 
   const wsRef = useRef(null);
   const doneRef = useRef(false);
+  const pollTimerRef = useRef(null);
 
   // ── 마운트 시 서버 상태 복원 ──────────────────────────────────────────────
   useEffect(() => {
@@ -316,6 +317,7 @@ export default function TrainScreen() {
       totalTimesteps,
       modelName,
       onCollection: (pct) => {
+        startRlPolling();  // WS 끊겨도 폴링이 진행률 유지
         setCollectProgress(pct);
         if (pct % 10 === 0 || pct === 100)
           setLogs((prev) => [...prev, `[수집] ${pct}%`]);
@@ -371,9 +373,47 @@ export default function TrainScreen() {
     else startTrain();
   }, [algo, startRlTrainSession, startTrain]);
 
+  // ── RL 폴링 fallback — WebSocket 끊겨도 진행률 유지 ─────────────────────
+  const startRlPolling = useCallback(() => {
+    if (pollTimerRef.current) return;
+    pollTimerRef.current = setInterval(async () => {
+      if (doneRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+        return;
+      }
+      try {
+        const job = await fetchRlTrainStatus();
+        if (job.status === 'collecting') {
+          setCollectProgress(job.collect_progress ?? 0);
+        } else if (job.status === 'training') {
+          setCollectProgress(100);
+          setTrainProgress(job.train_progress ?? 0);
+        } else if (job.status === 'complete' && job.result) {
+          doneRef.current = true;
+          setDone(true);
+          setIsTraining(false);
+          setCollectProgress(100);
+          setTrainProgress(100);
+          setNotice(`RL 모델 저장 완료: ${job.model_name || ''}`);
+          clearInterval(pollTimerRef.current);
+          pollTimerRef.current = null;
+        } else if (job.status === 'error') {
+          setError(`서버 오류: ${job.error}`);
+          setIsTraining(false);
+          clearInterval(pollTimerRef.current);
+          pollTimerRef.current = null;
+        }
+      } catch (_) {}
+    }, 5000);  // 5초마다 폴링
+  }, []);
+
   // ── 언마운트 정리 ─────────────────────────────────────────────────────────
   useEffect(() => {
-    return () => { wsRef.current?.close(); };
+    return () => {
+      wsRef.current?.close();
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+    };
   }, []);
 
   // ── 모델 이름 미리보기 ────────────────────────────────────────────────────
