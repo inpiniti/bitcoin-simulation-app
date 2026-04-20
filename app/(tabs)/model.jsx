@@ -89,7 +89,7 @@ export default function ModelScreen() {
     try {
       const { data } = await supabase
         .from('ml_models')
-        .select('id, name, accuracy, created_at')
+        .select('id, name, accuracy, created_at, model_json')
         .order('created_at', { ascending: false });
       setModels(data || []);
     } catch (_) {
@@ -144,7 +144,11 @@ export default function ModelScreen() {
                 onPress={() =>
                   router.push({
                     pathname: '/predict',
-                    params: { modelId: model.id, modelName: model.name },
+                    params: {
+                      modelId: model.id,
+                      modelName: model.name,
+                      modelType: model.model_json?.type || 'xgb',
+                    },
                   })
                 }
               />

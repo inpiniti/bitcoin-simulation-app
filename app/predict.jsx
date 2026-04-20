@@ -27,9 +27,18 @@ import { Button } from '../components/tds/Button';
 import { Badge } from '../components/tds/Badge';
 import { supabase } from '../lib/supabaseClient';
 import { predictXgb, fetchGroupTickers } from '../lib/xgbApi';
+import { predictRl } from '../lib/rlApi';
 import { samplePredictionResults } from '../lib/sampleData';
 
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
+
+const PRED_PERIOD_OPTIONS = [
+  { key: 'recent', label: '최신',     days: 60,    backtest: false },
+  { key: '6m',     label: '최근 6개월', days: 180,   backtest: true  },
+  { key: '1y',     label: '최근 1년',  days: 365,   backtest: true  },
+  { key: '2y',     label: '최근 2년',  days: 730,   backtest: true  },
+  { key: 'all',    label: '전체 내역', days: 36500, backtest: true  },
+];
 
 // 그룹 선택지 (웹과 동일)
 const TICKER_GROUPS = [
@@ -627,13 +636,14 @@ function BacktestTable({ results }) {
 
 export default function PredictScreen() {
   const router = useRouter();
-  const { modelId: paramModelId, modelName } = useLocalSearchParams();
+  const { modelId: paramModelId, modelName, modelType: paramModelType } = useLocalSearchParams();
+  const isRlModel = paramModelType === 'rl';
 
   // 설정
   const [targetMode, setTargetMode]   = useState('single'); // 'single' | 'group'
   const [singleTicker, setSingleTicker] = useState('');
   const [groupKey, setGroupKey]       = useState('sp500');
-  const [predAllTime, setPredAllTime] = useState(false); // 전체 과거 내역
+  const [predPeriod, setPredPeriod]   = useState('recent'); // 예측 기간
 
   // 임계값
   const [buyThreshold, setBuyThreshold]   = useState(60);
@@ -710,27 +720,46 @@ export default function PredictScreen() {
     setGroupResults([]);
     setRan(false);
 
+    const periodOpt  = PRED_PERIOD_OPTIONS.find(o => o.key === predPeriod) ?? PRED_PERIOD_OPTIONS[0];
+    const { days, backtest: showBacktest } = periodOpt;
+
+    // RL 예측 응답을 XGBoost 형식으로 정규화
+    const normalizeRlPreds = (preds) =>
+      (preds ?? []).map(p => ({
+        date:            p.date,
+        probability:     p.prob_buy ?? 0.5,
+        prediction:      p.action === 1 ? 1 : 0,
+        consecutiveDays: null,
+        change1d:        null,
+        actual:          null,
+        // RL 전용 필드 보존 (백테스팅 테이블에 표시 가능)
+        prob_buy:  p.prob_buy,
+        prob_hold: p.prob_hold,
+        prob_sell: p.prob_sell,
+        signal:    p.signal,
+      }));
+
     try {
       const modelId = await resolveModelId();
       if (!modelId) throw new Error('학습된 모델이 없습니다.');
 
-      // 데이터 기간: 전체 내역이면 최대치(36500일), 아니면 최신만 60일
-      const days = predAllTime ? 36500 : 60;
-
       if (isSingle) {
         // ── 단일 종목 ──────────────────────────────────────────────────────────
         const ticker = singleTicker.trim().toUpperCase();
-        const data   = await predictXgb({ modelId, ticker, days });
-        // data = { predictions: [{ probability, prediction, date, consecutiveDays, change1d, change7d, change30d, actual? }] }
-        const preds  = data.predictions ?? [];
+        let preds;
+        if (isRlModel) {
+          const data = await predictRl({ modelId, ticker, days });
+          preds = normalizeRlPreds(data.predictions);
+        } else {
+          const data = await predictXgb({ modelId, ticker, days });
+          preds = data.predictions ?? [];
+        }
         if (!preds.length) throw new Error('예측 결과가 없습니다.');
 
-        // 최신 예측 = 마지막 항목 (백엔드는 날짜순 정렬)
         const latest = preds[preds.length - 1];
         setPredResult({ ticker, ...latest });
 
-        // 전체 내역 모드일 때 백테스팅 저장 (확률 높은 순 정렬)
-        if (predAllTime) {
+        if (showBacktest) {
           const sorted = [...preds].sort((a, b) => b.probability - a.probability);
           setAllPredResults(sorted.map(p => ({ ticker, ...p })));
         }
@@ -741,18 +770,22 @@ export default function PredictScreen() {
         const tickers = await loadGroupTickers(groupKey);
         if (!tickers.length) throw new Error('티커 목록이 없습니다.');
 
-        const results = [];
-        const allPreds = []; // 백테스팅용 전체 예측 누적
+        const results  = [];
+        const allPreds = [];
         for (const { ticker, name } of tickers) {
           try {
-            const data  = await predictXgb({ modelId, ticker, days });
-            const preds = data.predictions ?? [];
+            let preds;
+            if (isRlModel) {
+              const data = await predictRl({ modelId, ticker, days });
+              preds = normalizeRlPreds(data.predictions);
+            } else {
+              const data = await predictXgb({ modelId, ticker, days });
+              preds = data.predictions ?? [];
+            }
             if (!preds.length) continue;
             const latest = preds[preds.length - 1];
-            // actual 포함 — 실제/적중 컬럼에 표시
             results.push({ ticker, name, probability: latest.probability, prediction: latest.prediction, date: latest.date, actual: latest.actual ?? null });
-            // predAllTime 체크 시 전체 내역도 누적
-            if (predAllTime) {
+            if (showBacktest) {
               preds.forEach(p => allPreds.push({ ticker, name, ...p }));
             }
           } catch (_) {}
@@ -762,19 +795,17 @@ export default function PredictScreen() {
         results.sort((a, b) => b.probability - a.probability);
         setGroupResults(results);
 
-        if (predAllTime && allPreds.length) {
+        if (showBacktest && allPreds.length) {
           const sorted = [...allPreds].sort((a, b) => b.probability - a.probability);
           setAllPredResults(sorted);
         }
 
-        setNotice(`${results.length}개 종목 예측이 완료됐어요.${predAllTime ? ` (백테스팅 ${allPreds.length}건)` : ''}`);
+        setNotice(`${results.length}개 종목 예측이 완료됐어요.${showBacktest ? ` (백테스팅 ${allPreds.length}건)` : ''}`);
       }
 
     } catch (e) {
-      // 샘플 폴백
       if (!isSingle) {
         const fallback = samplePredictionResults.nasdaq;
-        // sampleData 필드 매핑: buy_probability → probability
         const mapped = fallback.map(r => ({
           ...r,
           probability: r.buy_probability ?? 0.5,
@@ -789,7 +820,7 @@ export default function PredictScreen() {
       setLoading(false);
       setRan(true);
     }
-  }, [isSingle, singleTicker, groupKey, predAllTime, resolveModelId, loadGroupTickers]);
+  }, [isSingle, singleTicker, groupKey, predPeriod, isRlModel, resolveModelId, loadGroupTickers]);
 
   const canRun = !loading && (isSingle ? singleTicker.trim().length > 0 : true);
 
@@ -894,20 +925,32 @@ export default function PredictScreen() {
             </>
           )}
 
-          {/* 전체 과거 내역 예측 */}
+          {/* 예측 기간 선택 */}
           <View style={styles.backtestToggleRow}>
-            <TouchableOpacity
-              style={styles.backtestToggleContent}
-              onPress={() => setPredAllTime(v => !v)}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.checkbox, predAllTime && styles.checkboxChecked]}>
-                {predAllTime && <Ionicons name="checkmark" size={12} color="#fff" />}
+            <Text style={[styles.sectionLabel, { marginBottom: 10 }]}>예측 기간</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={styles.periodChipRow}>
+                {PRED_PERIOD_OPTIONS.map(({ key, label }) => {
+                  const active = predPeriod === key;
+                  return (
+                    <TouchableOpacity
+                      key={key}
+                      style={[styles.chip, active && { borderColor: tdsColors.blue500, backgroundColor: `${tdsColors.blue500}18` }]}
+                      onPress={() => setPredPeriod(key)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.chipText, active && { color: tdsColors.blue500, fontWeight: '700' }]}>
+                        {label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
-              <Text style={styles.backtestToggleText}>전체 과거 내역 예측 (Trend Backtesting)</Text>
-            </TouchableOpacity>
+            </ScrollView>
             <Text style={styles.backtestToggleDesc}>
-              체크 시 과거 모든 데이터에 대해 예측을 수행합니다.{!isSingle ? ' (종목 수만큼 시간이 소요됩니다)' : ' (시간이 더 소요될 수 있습니다)'}
+              {predPeriod === 'recent'
+                ? '최근 60일 데이터로 현재 시그널만 확인합니다.'
+                : `선택한 기간의 과거 데이터로 백테스팅을 수행합니다.${!isSingle ? ' (종목 수만큼 시간이 소요됩니다)' : ''}`}
             </Text>
           </View>
 
@@ -1076,6 +1119,7 @@ const styles = StyleSheet.create({
 
   // 그룹 칩
   groupChipRow: { flexDirection: 'row', gap: 8, paddingBottom: 2 },
+  periodChipRow: { flexDirection: 'row', gap: 8, paddingBottom: 4 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
     paddingHorizontal: 12,
