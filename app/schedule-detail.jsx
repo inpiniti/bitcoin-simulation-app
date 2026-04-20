@@ -489,6 +489,7 @@ function TickersTab({ settingId, settingName, tickerGroupKey, activeDates, onAct
               data={tickerData}
               prices={prices}
               pricesLoading={pricesLoading}
+              marketIndex={marketIndex}
               onBackfill={handleBackfill}
               backfilling={backfilling}
             />
@@ -499,7 +500,7 @@ function TickersTab({ settingId, settingName, tickerGroupKey, activeDates, onAct
   );
 }
 
-function TickerCard({ data, prices, pricesLoading, onBackfill, backfilling }) {
+function TickerCard({ data, prices, pricesLoading, marketIndex, onBackfill, backfilling }) {
   const threshold = data.buy_threshold ?? 0.6;
   const rawTickers = data.tickers ?? [];
   const tickers = typeof rawTickers === 'string' ? JSON.parse(rawTickers) : rawTickers;
@@ -554,6 +555,26 @@ function TickerCard({ data, prices, pricesLoading, onBackfill, backfilling }) {
             </View>
 
             <View style={styles.tickerStatDivider} />
+
+            {/* 시장 지수 */}
+            {marketIndex && (
+              <>
+                <View style={styles.tickerStatBlock}>
+                  <Text style={styles.tickerStatLabel}>{marketIndex.label}</Text>
+                  {marketIndex.changePct !== null ? (
+                    <Text style={[
+                      styles.tickerStatValue,
+                      marketIndex.changePct > 0 ? { color: tdsColors.red500 } : { color: tdsColors.blue500 },
+                    ]}>
+                      {marketIndex.changePct > 0 ? '+' : ''}{marketIndex.changePct.toFixed(1)}%
+                    </Text>
+                  ) : (
+                    <Text style={styles.tickerStatSub}>데이터 없음</Text>
+                  )}
+                </View>
+                <View style={styles.tickerStatDivider} />
+              </>
+            )}
 
             {/* TimesFM ▲ 평균 */}
             <View style={styles.tickerStatBlock}>
@@ -698,7 +719,7 @@ export default function ScheduleDetailScreen() {
     buy_condition, sell_condition,
     is_active, trade_enabled,
   } = useLocalSearchParams();
-  const [activeTab, setActiveTab] = useState('logs');
+  const [activeTab, setActiveTab] = useState('tickers');
   const [logActiveDates, setLogActiveDates] = useState(new Set());
   const [tickerActiveDates, setTickerActiveDates] = useState(new Set());
 
@@ -758,6 +779,7 @@ export default function ScheduleDetailScreen() {
           <TickersTab
             settingId={settingId}
             settingName={settingName}
+            tickerGroupKey={ticker_group_key}
             activeDates={activeDates}
             onActiveDatesChange={setTickerActiveDates}
           />
