@@ -337,6 +337,14 @@ export default function TrainScreen() {
         setNotice(`RL 모델 저장 완료. ${result?.episodeCount || 0}개 종목, ${(result?.totalTimesteps || 0).toLocaleString()} 스텝`);
       },
       onError: (msg) => {
+        if (msg === '__ws_disconnect__') {
+          // WS 끊김은 치명적 오류 아님 — 폴링이 계속 상태를 추적함
+          setLogs((prev) => [...prev, '[안내] 연결이 끊겼어요. 서버에서 학습은 계속 진행 중입니다. (5초마다 상태 확인 중)']);
+          setNotice('화면을 끄거나 앱을 백그라운드로 옮겨도 학습은 서버에서 계속됩니다.');
+          // isTraining, collectProgress, trainProgress 유지 — 폴링이 업데이트
+          return;
+        }
+        // 실제 서버 에러만 오류로 처리
         setError(`오류: ${msg}`);
         setIsTraining(false);
         setLogs((prev) => [...prev, `[오류] ${msg}`]);
