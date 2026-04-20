@@ -30,7 +30,7 @@ import {
   fetchTopTickersLog,
   backfillTimesFM,
 } from '../lib/tradingApi';
-import { fetchAllTickerCloses } from '../lib/priceApi';
+import { fetchAllTickerCloses, fetchGroupIndexByDate } from '../lib/priceApi';
 import {
   sampleSettings,
   sampleDlTradeLogs,
@@ -342,7 +342,9 @@ function StatChip({ label, value, color, bold }) {
 
 // ─── 상위 10개 종목 탭 ────────────────────────────────────────────────────────
 
-function TickersTab({ settingId, settingName, activeDates, onActiveDatesChange }) {
+const SUPPORTED_INDEX_GROUPS = new Set(['sp500', 'qqq', 'nasdaq100', 'kospi', 'kosdaq']);
+
+function TickersTab({ settingId, settingName, tickerGroupKey, activeDates, onActiveDatesChange }) {
   const [selectedDate, setSelectedDate] = useState(() => toDateStr(new Date()));
   const [tickerData, setTickerData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -351,6 +353,7 @@ function TickersTab({ settingId, settingName, activeDates, onActiveDatesChange }
   const [pricesLoading, setPricesLoading] = useState(false);
   const [backfilling, setBackfilling] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [marketIndex, setMarketIndex] = useState(null);
 
   // 초기화: 활성 날짜 로드
   useEffect(() => {
@@ -442,6 +445,18 @@ function TickersTab({ settingId, settingName, activeDates, onActiveDatesChange }
       .catch(() => setPrices({}))
       .finally(() => setPricesLoading(false));
   }, [tickerData, selectedDate]);
+
+  // 시장 지수 조회: 지원 그룹인 경우 선택 날짜의 지수 등락 조회
+  useEffect(() => {
+    if (!selectedDate || !SUPPORTED_INDEX_GROUPS.has(tickerGroupKey)) {
+      setMarketIndex(null);
+      return;
+    }
+    setMarketIndex(null);
+    fetchGroupIndexByDate(tickerGroupKey, selectedDate)
+      .then((data) => setMarketIndex(data))
+      .catch(() => setMarketIndex(null));
+  }, [selectedDate, tickerGroupKey]);
 
   return (
     <View style={{ flex: 1 }}>
