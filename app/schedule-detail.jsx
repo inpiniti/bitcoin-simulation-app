@@ -1,7 +1,7 @@
 /**
  * 예약 상세 화면
  * - 헤더: 뒤로가기 / 설정 이름 / 수정
- * - 탭: 로그 | 상위 10개 종목
+ * - 탭: 로그 | 상위 20개 종목
  * - 주간 달력 (Toss 스타일) + 선택 날짜별 콘텐츠
  */
 import { useState, useCallback, useEffect, useRef } from 'react';
@@ -42,7 +42,7 @@ import {
 
 const DAY_LABELS = ['일', '월', '화', '수', '목', '금', '토'];
 const TABS = [
-  { key: 'tickers', label: '상위 10개 종목' },
+  { key: 'tickers', label: '상위 20개 종목' },
   { key: 'logs', label: '로그' },
 ];
 
@@ -341,11 +341,11 @@ function StatChip({ label, value, color, bold }) {
   );
 }
 
-// ─── 상위 10개 종목 탭 ────────────────────────────────────────────────────────
+// ─── 상위 20개 종목 탭 ────────────────────────────────────────────────────────
 
 const SUPPORTED_INDEX_GROUPS = new Set(['sp500', 'qqq', 'nasdaq100', 'kospi', 'kosdaq']);
 
-function TickersTab({ settingId, settingName, tickerGroupKey, aiModelKey, activeDates, onActiveDatesChange }) {
+function TickersTab({ settingId, settingName, tickerGroupKey, aiModelKey, rlModelKey, activeDates, onActiveDatesChange }) {
   const [selectedDate, setSelectedDate] = useState(() => toDateStr(new Date()));
   const [tickerData, setTickerData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -711,6 +711,21 @@ function TickerCard({ data, prices, pricesLoading, marketIndex, indexPrediction,
                       <Text style={styles.timesfmDownText}>▼ TimesFM</Text>
                     </View>
                   )}
+                  {t.rl_signal === 'BUY' && (
+                    <View style={styles.rlBuy}>
+                      <Text style={styles.rlBuyText}>▲ RL</Text>
+                    </View>
+                  )}
+                  {t.rl_signal === 'SELL' && (
+                    <View style={styles.rlSell}>
+                      <Text style={styles.rlSellText}>▼ RL</Text>
+                    </View>
+                  )}
+                  {t.rl_signal === 'HOLD' && (
+                    <View style={styles.rlHold}>
+                      <Text style={styles.rlHoldText}>● RL</Text>
+                    </View>
+                  )}
                 </View>
                 <View style={styles.tickerRight}>
                   <Text style={[styles.tickerProb, aboveThreshold && { color: tdsColors.red500 }]}>
@@ -776,7 +791,7 @@ export default function ScheduleDetailScreen() {
   const {
     settingId, settingName, targetGroup,
     execution_time, ticker_group_key,
-    ai_model_key,
+    ai_model_key, rl_model_key,
     buy_condition, sell_condition,
     is_active, trade_enabled,
   } = useLocalSearchParams();
@@ -808,6 +823,7 @@ export default function ScheduleDetailScreen() {
               execution_time,
               ticker_group_key,
               ai_model_key,
+              rl_model_key: rl_model_key ?? '',
               buy_condition,
               sell_condition,
               is_active,
@@ -842,6 +858,7 @@ export default function ScheduleDetailScreen() {
             settingName={settingName}
             tickerGroupKey={ticker_group_key}
             aiModelKey={ai_model_key}
+            rlModelKey={rl_model_key}
             activeDates={activeDates}
             onActiveDatesChange={setTickerActiveDates}
           />
@@ -1029,6 +1046,29 @@ const styles = StyleSheet.create({
     backgroundColor: `${tdsColors.blue500}22`,
   },
   timesfmDownText: { fontSize: 10, fontWeight: '700', color: tdsColors.blue500 },
+
+  // RL 시그널 배지
+  rlBuy: {
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 5,
+    backgroundColor: `${tdsColors.green400}22`,
+  },
+  rlBuyText: { fontSize: 10, fontWeight: '700', color: tdsColors.green400 },
+  rlSell: {
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 5,
+    backgroundColor: `${tdsColors.blue500}22`,
+  },
+  rlSellText: { fontSize: 10, fontWeight: '700', color: tdsColors.blue500 },
+  rlHold: {
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 5,
+    backgroundColor: `${tdsDark.textTertiary}22`,
+  },
+  rlHoldText: { fontSize: 10, fontWeight: '700', color: tdsDark.textTertiary },
 });
 
 // ─── 달력 Styles ──────────────────────────────────────────────────────────────

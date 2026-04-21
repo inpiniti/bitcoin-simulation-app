@@ -50,6 +50,7 @@ const DEFAULT_FORM = {
   execution_time: 'market_close_1h',
   ticker_group_key: 'usall',
   ai_model_key: 'xgboost',
+  rl_model_key: null,
   buy_condition: '60',
   sell_condition: '30',
   is_active: true,
@@ -117,6 +118,7 @@ export default function ScheduleFormScreen() {
         execution_time: params.execution_time ?? 'market_close_1h',
         ticker_group_key: params.ticker_group_key ?? 'usall',
         ai_model_key: params.ai_model_key ?? 'xgboost',
+        rl_model_key: params.rl_model_key || null,
         buy_condition: String(params.buy_condition ?? '60'),
         sell_condition: String(params.sell_condition ?? '30'),
         is_active: params.is_active === 'true' || params.is_active === true,
@@ -129,38 +131,59 @@ export default function ScheduleFormScreen() {
 
   const executionLabel = EXECUTION_TIMES.find((x) => x.key === form.execution_time)?.label;
   const tickerGroupLabel = TICKER_GROUPS.find((x) => x.key === form.ticker_group_key)?.label;
+  const xgbModels = aiModels.filter((m) => (m.model_json?.type || 'xgb') !== 'rl');
+  const rlModels = aiModels.filter((m) => m.model_json?.type === 'rl');
   const selectedModel = aiModels.find((m) => m.id === form.ai_model_key);
+  const selectedRlModel = rlModels.find((m) => m.id === form.rl_model_key);
 
   const pickerTitle =
     pickerKey === 'execution_time'
       ? '실행 시간 선택'
       : pickerKey === 'ticker_group_key'
         ? '티커 그룹 선택'
-        : 'AI 모델 선택';
+        : pickerKey === 'rl_model_key'
+          ? '강화학습 모델 선택 (선택)'
+          : 'XGBoost 모델 선택';
 
   const pickerOptions =
     pickerKey === 'execution_time'
       ? EXECUTION_TIMES.map((x) => ({ key: x.key, label: x.label }))
       : pickerKey === 'ticker_group_key'
         ? TICKER_GROUPS.map((x) => ({ key: x.key, label: x.label }))
-        : aiModels.map((m) => ({
-          key: m.id,
-          label: m.name || m.id,
-          meta: `${new Date(m.created_at).toLocaleDateString('ko-KR')} · 정확도: ${((m.accuracy || 0) * 100).toFixed(1)}%`,
-        }));
+        : pickerKey === 'rl_model_key'
+          ? [
+              { key: '__none__', label: '사용 안 함' },
+              ...rlModels.map((m) => ({
+                key: m.id,
+                label: m.name || m.id,
+                meta: `${new Date(m.created_at).toLocaleDateString('ko-KR')} · 승률: ${((m.accuracy || 0) * 100).toFixed(1)}%`,
+              })),
+            ]
+          : xgbModels.map((m) => ({
+              key: m.id,
+              label: m.name || m.id,
+              meta: `${new Date(m.created_at).toLocaleDateString('ko-KR')} · 정확도: ${((m.accuracy || 0) * 100).toFixed(1)}%`,
+            }));
 
-  const selectedPickerValue = pickerKey ? form[pickerKey] : null;
+  const selectedPickerValue =
+    pickerKey === 'rl_model_key'
+      ? (form.rl_model_key || '__none__')
+      : pickerKey ? form[pickerKey] : null;
 
   const handleSelectPickerOption = (value) => {
     if (!pickerKey) return;
-    set(pickerKey)(value);
+    if (pickerKey === 'rl_model_key') {
+      set('rl_model_key')(value === '__none__' ? null : value);
+    } else {
+      set(pickerKey)(value);
+    }
     setPickerKey(null);
   };
 
   const handleDelete = () => {
     Alert.alert(
       '설정 삭제',
-      `"${params.settingName}" 설정과 관련 로그(실행 기록, TOP10 종목)를 모두 삭제할까요?\n이 작업은 되돌릴 수 없습니다.`,
+      `"${params.settingName}" 설정과 관련 로그(실행 기록, TOP20 종목)를 모두 삭제할까요?\n이 작업은 되돌릴 수 없습니다.`,
       [
         { text: '취소', style: 'cancel' },
         {
@@ -199,6 +222,7 @@ export default function ScheduleFormScreen() {
         execution_time: form.execution_time,
         ticker_group_key: form.ticker_group_key,
         ai_model_key: form.ai_model_key,
+        rl_model_key: form.rl_model_key || null,
         buy_condition: parseFloat(form.buy_condition) || 60,
         sell_condition: parseFloat(form.sell_condition) || 30,
         is_active: form.is_active,
@@ -264,14 +288,25 @@ export default function ScheduleFormScreen() {
           />
         </View>
 
-        {/* AI 모델 선택 */}
+        {/* XGBoost 모델 선택 */}
         <View style={styles.fieldLabelTop}>
           <SelectField
-            label="AI 모델 (Model Key)"
+            label="XGBoost 모델 (필수)"
             value={selectedModel?.name || form.ai_model_key}
             placeholder={loadingModels ? '모델 목록을 불러오는 중이에요' : '모델 선택 (필수)'}
             onPress={() => setPickerKey('ai_model_key')}
             hasError={!form.ai_model_key}
+            disabled={loadingModels}
+          />
+        </View>
+
+        {/* 강화학습 모델 선택 (선택 사항) */}
+        <View style={styles.fieldLabelTop}>
+          <SelectField
+            label="강화학습 모델 (선택 · 최종 매수 필터)"
+            value={selectedRlModel?.name || (form.rl_model_key ? form.rl_model_key : null)}
+            placeholder={loadingModels ? '모델 목록을 불러오는 중이에요' : '사용 안 함 (선택)'}
+            onPress={() => setPickerKey('rl_model_key')}
             disabled={loadingModels}
           />
         </View>
@@ -350,7 +385,7 @@ export default function ScheduleFormScreen() {
         onClose={() => setPickerKey(null)}
         title={pickerTitle}
       >
-        {pickerKey === 'ai_model_key' && !loadingModels && pickerOptions.length === 0 ? (
+        {(pickerKey === 'ai_model_key' || pickerKey === 'rl_model_key') && !loadingModels && pickerOptions.filter(o => o.key !== '__none__').length === 0 ? (
           <View style={styles.sheetEmptyBox}>
             <Text style={styles.noModels}>저장된 모델이 없어요. 모델 탭에서 학습을 먼저 진행해줘요.</Text>
           </View>
