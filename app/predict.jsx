@@ -727,7 +727,7 @@ export default function PredictScreen() {
     const normalizeRlPreds = (preds) =>
       (preds ?? []).map(p => ({
         date:            p.date,
-        probability:     p.prob_buy ?? 0.5,
+        probability:     (p.prob_buy ?? 50) / 100,
         prediction:      p.action === 1 ? 1 : 0,
         consecutiveDays: null,
         change1d:        null,
