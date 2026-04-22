@@ -50,40 +50,11 @@ function getSundayOfWeek(d) {
 import { fetchSettings } from '../../lib/tradingApi';
 import { router } from 'expo-router';
 
-function ScreenHeader({ meta }) {
+function ScreenHeader() {
   const today = new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' });
-  const total = (meta?.bullish_count ?? 0) + (meta?.bearish_count ?? 0) + (meta?.neutral_count ?? 0);
-  const bullishPct = total > 0 ? Math.round((meta.bullish_count / total) * 100) : null;
 
-  const handleSettingsPress = async () => {
-    const { data } = await fetchSettings();
-    const existing = data?.find(s => s.ticker_group_key === 'sp500_news');
-    
-    if (existing) {
-      router.push({
-        pathname: '/schedule-form',
-        params: {
-          settingId: existing.id,
-          settingName: existing.name,
-          ticker_group_key: existing.ticker_group_key,
-          execution_time: existing.execution_time,
-          ai_model_key: existing.ai_model_key,
-          rl_model_key: existing.rl_model_key ?? '',
-          buy_condition: String(existing.buy_condition ?? 60),
-          sell_condition: String(existing.sell_condition ?? 30),
-          is_active: String(existing.is_active ?? true),
-          trade_enabled: String(existing.trade_enabled ?? false),
-        }
-      });
-    } else {
-      router.push({
-        pathname: '/schedule-form',
-        params: {
-          ticker_group_key: 'sp500_news',
-          settingName: 'S&P 500 뉴스 분석 설정'
-        }
-      });
-    }
+  const handleSettingsPress = () => {
+    router.push('/news-settings');
   };
 
   return (
@@ -94,8 +65,8 @@ function ScreenHeader({ meta }) {
             <Text style={styles.headerEyebrow}>S&P 500 · 뉴스 분석</Text>
             <Text style={styles.headerTitle}>시장 심리</Text>
           </View>
-          <TouchableOpacity 
-            style={styles.settingsBtn} 
+          <TouchableOpacity
+            style={styles.settingsBtn}
             onPress={handleSettingsPress}
             activeOpacity={0.7}
           >
@@ -104,11 +75,6 @@ function ScreenHeader({ meta }) {
         </View>
         <Text style={styles.headerSub}>{today} 기준으로 분석해요</Text>
       </View>
-      {bullishPct != null && (
-        <View style={styles.headerPill}>
-          <Text style={styles.headerPillText}>📈 낙관 {bullishPct}%</Text>
-        </View>
-      )}
     </View>
   );
 }
@@ -520,8 +486,8 @@ export default function NewsScreen() {
           />
         }
       >
-        {/* 화면 헤더 — 계좌 탭과 동일 패턴 */}
-        <ScreenHeader meta={meta} />
+        {/* 화면 헤더 */}
+        <ScreenHeader />
 
         {/* 주간 달력 */}
         <WeekCalendar
