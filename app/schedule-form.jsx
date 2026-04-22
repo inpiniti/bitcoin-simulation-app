@@ -159,21 +159,28 @@ export default function ScheduleFormScreen() {
                 meta: `${new Date(m.created_at).toLocaleDateString('ko-KR')} · 승률: ${((m.accuracy || 0) * 100).toFixed(1)}%`,
               })),
             ]
-          : xgbModels.map((m) => ({
-              key: m.id,
-              label: m.name || m.id,
-              meta: `${new Date(m.created_at).toLocaleDateString('ko-KR')} · 정확도: ${((m.accuracy || 0) * 100).toFixed(1)}%`,
-            }));
+          : [
+              ...(isNewsMode ? [{ key: '__none__', label: '사용 안 함' }] : []),
+              ...xgbModels.map((m) => ({
+                key: m.id,
+                label: m.name || m.id,
+                meta: `${new Date(m.created_at).toLocaleDateString('ko-KR')} · 정확도: ${((m.accuracy || 0) * 100).toFixed(1)}%`,
+              })),
+            ];
 
   const selectedPickerValue =
     pickerKey === 'rl_model_key'
       ? (form.rl_model_key || '__none__')
-      : pickerKey ? form[pickerKey] : null;
+      : pickerKey === 'ai_model_key' && isNewsMode
+        ? (form.ai_model_key || '__none__')
+        : pickerKey ? form[pickerKey] : null;
 
   const handleSelectPickerOption = (value) => {
     if (!pickerKey) return;
     if (pickerKey === 'rl_model_key') {
       set('rl_model_key')(value === '__none__' ? null : value);
+    } else if (pickerKey === 'ai_model_key' && isNewsMode) {
+      set('ai_model_key')(value === '__none__' ? null : value);
     } else {
       set(pickerKey)(value);
     }
@@ -206,12 +213,14 @@ export default function ScheduleFormScreen() {
     );
   };
 
+  const isNewsMode = form.ticker_group_key === 'sp500_news';
+
   const handleSave = async () => {
     if (!form.name.trim()) {
       Alert.alert('입력 오류', '설정 이름을 입력해주세요.');
       return;
     }
-    if (!form.ai_model_key) {
+    if (!isNewsMode && !form.ai_model_key) {
       Alert.alert('입력 오류', 'AI 모델을 선택해주세요.');
       return;
     }
@@ -221,12 +230,12 @@ export default function ScheduleFormScreen() {
         name: form.name.trim(),
         execution_time: form.execution_time,
         ticker_group_key: form.ticker_group_key,
-        ai_model_key: form.ai_model_key,
+        ai_model_key: form.ai_model_key || null,
         rl_model_key: form.rl_model_key || null,
         buy_condition: parseFloat(form.buy_condition) || 60,
         sell_condition: parseFloat(form.sell_condition) || 30,
         is_active: form.is_active,
-        trade_enabled: form.trade_enabled,
+        trade_enabled: isNewsMode ? false : form.trade_enabled,
       };
       if (isEdit) {
         await updateSetting(params.settingId, payload);
@@ -268,14 +277,26 @@ export default function ScheduleFormScreen() {
           placeholderTextColor={tdsDark.textTertiary}
         />
 
-        {/* 실행 시간 */}
+        {/* 실행 시간 — 뉴스 모드에서는 고정 안내 */}
         <View style={styles.fieldLabelTop}>
-          <SelectField
-            label="실행 시간"
-            value={executionLabel}
-            placeholder="실행 시간을 선택하세요"
-            onPress={() => setPickerKey('execution_time')}
-          />
+          {isNewsMode ? (
+            <>
+              <Text style={styles.fieldLabel}>실행 시간</Text>
+              <View style={styles.infoBox}>
+                <Ionicons name="time-outline" size={14} color={tdsColors.blue500} style={{ marginTop: 1 }} />
+                <Text style={styles.infoText}>
+                  뉴스 분석은 매일 <Text style={{ fontWeight: '700' }}>06:00 KST</Text>에 자동 실행됩니다. 실행 시간을 별도로 설정할 수 없어요.
+                </Text>
+              </View>
+            </>
+          ) : (
+            <SelectField
+              label="실행 시간"
+              value={executionLabel}
+              placeholder="실행 시간을 선택하세요"
+              onPress={() => setPickerKey('execution_time')}
+            />
+          )}
         </View>
 
         {/* 티커 그룹 */}
@@ -291,11 +312,11 @@ export default function ScheduleFormScreen() {
         {/* XGBoost 모델 선택 */}
         <View style={styles.fieldLabelTop}>
           <SelectField
-            label="XGBoost 모델 (필수)"
-            value={selectedModel?.name || form.ai_model_key}
-            placeholder={loadingModels ? '모델 목록을 불러오는 중이에요' : '모델 선택 (필수)'}
+            label={isNewsMode ? 'XGBoost 모델 (선택 · 없으면 생략)' : 'XGBoost 모델 (필수)'}
+            value={selectedModel?.name || (form.ai_model_key && form.ai_model_key !== 'xgboost' ? form.ai_model_key : null)}
+            placeholder={loadingModels ? '모델 목록을 불러오는 중이에요' : isNewsMode ? '사용 안 함 (선택)' : '모델 선택 (필수)'}
             onPress={() => setPickerKey('ai_model_key')}
-            hasError={!form.ai_model_key}
+            hasError={!isNewsMode && !form.ai_model_key}
             disabled={loadingModels}
           />
         </View>
@@ -311,37 +332,56 @@ export default function ScheduleFormScreen() {
           />
         </View>
 
-        {/* 매수 / 매도 조건 */}
-        <View style={styles.rowInputs}>
-          <View style={styles.halfInput}>
-            <Text style={styles.fieldLabel}>매수 확률 (%)</Text>
-            <TextInput
-              style={styles.textInput}
-              value={form.buy_condition}
-              onChangeText={set('buy_condition')}
-              keyboardType="numeric"
-              placeholder="60"
-              placeholderTextColor={tdsDark.textTertiary}
-            />
+        {/* 뉴스 모드 안내 박스 */}
+        {isNewsMode && (
+          <View style={[styles.infoBox, { marginTop: 16, alignItems: 'flex-start' }]}>
+            <Ionicons name="information-circle-outline" size={14} color={tdsColors.blue500} style={{ marginTop: 1 }} />
+            <Text style={styles.infoText}>
+              S&P 500 뉴스 분석 전용 설정입니다.{'\n'}
+              • XGBoost/RL 모델은 선택 사항이에요{'\n'}
+              • TimesFM · Chronos · Moirai는 모델 없이도 동작해요{'\n'}
+              • 매매 조건과 실제 매매는 적용되지 않아요
+            </Text>
           </View>
-          <View style={[styles.halfInput, { marginLeft: 12 }]}>
-            <Text style={styles.fieldLabel}>매도 확률 (%)</Text>
-            <TextInput
-              style={styles.textInput}
-              value={form.sell_condition}
-              onChangeText={set('sell_condition')}
-              keyboardType="numeric"
-              placeholder="30"
-              placeholderTextColor={tdsDark.textTertiary}
-            />
+        )}
+
+        {/* 매수 / 매도 조건 — 뉴스 모드 제외 */}
+        {!isNewsMode && (
+          <View style={styles.rowInputs}>
+            <View style={styles.halfInput}>
+              <Text style={styles.fieldLabel}>매수 확률 (%)</Text>
+              <TextInput
+                style={styles.textInput}
+                value={form.buy_condition}
+                onChangeText={set('buy_condition')}
+                keyboardType="numeric"
+                placeholder="60"
+                placeholderTextColor={tdsDark.textTertiary}
+              />
+            </View>
+            <View style={[styles.halfInput, { marginLeft: 12 }]}>
+              <Text style={styles.fieldLabel}>매도 확률 (%)</Text>
+              <TextInput
+                style={styles.textInput}
+                value={form.sell_condition}
+                onChangeText={set('sell_condition')}
+                keyboardType="numeric"
+                placeholder="30"
+                placeholderTextColor={tdsDark.textTertiary}
+              />
+            </View>
           </View>
-        </View>
+        )}
 
         {/* 스케줄 ON/OFF */}
         <View style={[styles.toggleRow, styles.fieldLabelTop]}>
           <View style={{ flex: 1 }}>
             <Text style={styles.toggleLabel}>스케줄 활성화</Text>
-            <Text style={styles.toggleSub}>정해진 시간에 자동으로 분석을 시작합니다</Text>
+            <Text style={styles.toggleSub}>
+              {isNewsMode
+                ? '비활성화 시 뉴스 분석 파이프라인이 중단됩니다'
+                : '정해진 시간에 자동으로 분석을 시작합니다'}
+            </Text>
           </View>
           <Switch
             value={form.is_active}
@@ -351,19 +391,21 @@ export default function ScheduleFormScreen() {
           />
         </View>
 
-        {/* 실제매매 ON/OFF */}
-        <View style={[styles.toggleRow, { marginTop: 12 }]}>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.toggleLabel, { color: tdsColors.orange500 }]}>실제 매매 활성화</Text>
-            <Text style={styles.toggleSub}>체크 해제 시 리포트만 발송됩니다</Text>
+        {/* 실제매매 ON/OFF — 뉴스 모드 제외 */}
+        {!isNewsMode && (
+          <View style={[styles.toggleRow, { marginTop: 12 }]}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.toggleLabel, { color: tdsColors.orange500 }]}>실제 매매 활성화</Text>
+              <Text style={styles.toggleSub}>체크 해제 시 리포트만 발송됩니다</Text>
+            </View>
+            <Switch
+              value={form.trade_enabled}
+              onValueChange={set('trade_enabled')}
+              trackColor={{ false: tdsDark.border, true: tdsColors.orange500 }}
+              thumbColor={tdsColors.white}
+            />
           </View>
-          <Switch
-            value={form.trade_enabled}
-            onValueChange={set('trade_enabled')}
-            trackColor={{ false: tdsDark.border, true: tdsColors.orange500 }}
-            thumbColor={tdsColors.white}
-          />
-        </View>
+        )}
 
         {/* 삭제 버튼 — 수정 모드에서만 표시 */}
         {isEdit && (
@@ -511,6 +553,22 @@ const styles = StyleSheet.create({
 
   rowInputs: { flexDirection: 'row', marginTop: 24 },
   halfInput: { flex: 1 },
+
+  infoBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: `${tdsColors.blue500}12`,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 12,
+    color: tdsColors.blue600,
+    lineHeight: 18,
+  },
 
   toggleRow: {
     flexDirection: 'row',
