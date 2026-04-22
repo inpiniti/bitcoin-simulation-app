@@ -3,10 +3,11 @@
  *
  * [TDS 규칙 적용]
  * - 제이콥 법칙: 계좌 탭과 동일한 ScreenHeader + listCard 구조 사용
- * - 도허티 임계: 스켈레톤 로딩 (ActivityIndicator 단독 사용 X)
+ * - 도허티 임계: 스켈레톤 로딩
  * - 밀러 법칙: reason 항상 노출, confidence 50% 이상 필터
  * - 피크엔드: 빈 상태 이모지 + 해요체 메시지
  * - 심미적 사용성: 계좌 탭과 동일한 그림자·컬러·타이포그래피
+ * - 폰 레스토프 효과: XGBoost/RL/TimesFM/Chronos/Moirai 신호 컬러 뱃지로 차별화
  */
 import { useState, useEffect, useCallback } from 'react';
 import {
@@ -217,6 +218,63 @@ function MetaSummaryCard({ meta }) {
   );
 }
 
+// ─── 모델 신호 뱃지 ───────────────────────────────────────────────────────────
+
+/**
+ * 신호값을 뱃지 텍스트 + 색상으로 변환
+ * - XGBoost: xgb_prob (0~1) → up/down %
+ * - RL: rl_signal (BUY/HOLD/SELL)
+ * - TimesFM/Chronos/Moirai: signal (up/down)
+ */
+function SignalBadge({ label, value, type }) {
+  if (value == null || value === undefined) return null;
+
+  let badgeText = '';
+  let badgeBg = tdsDark.bgSecondary;
+  let badgeColor = tdsDark.textSecondary;
+
+  if (type === 'xgb') {
+    const pct = Math.round(value * 100);
+    badgeText = `XGB ${pct}%`;
+    if (pct >= 70) { badgeBg = `${tdsColors.red500}18`; badgeColor = tdsColors.red500; }
+    else if (pct >= 55) { badgeBg = `${tdsColors.orange500}18`; badgeColor = tdsColors.orange500; }
+    else { badgeBg = `${tdsDark.textTertiary}18`; badgeColor = tdsDark.textTertiary; }
+  } else if (type === 'rl') {
+    if (value === 'BUY') { badgeText = '🤖 BUY'; badgeBg = `${tdsColors.red500}18`; badgeColor = tdsColors.red500; }
+    else if (value === 'SELL') { badgeText = '🤖 SELL'; badgeBg = `${tdsColors.blue500}18`; badgeColor = tdsColors.blue500; }
+    else { badgeText = '🤖 HOLD'; badgeBg = `${tdsDark.textTertiary}18`; badgeColor = tdsDark.textTertiary; }
+  } else {
+    // TimesFM / Chronos / Moirai
+    if (value === 'up') {
+      badgeText = `▲ ${label}`;
+      badgeBg = `${tdsColors.red500}18`;
+      badgeColor = tdsColors.red500;
+    } else {
+      badgeText = `▼ ${label}`;
+      badgeBg = `${tdsColors.blue500}18`;
+      badgeColor = tdsColors.blue500;
+    }
+  }
+
+  return (
+    <View style={[signalStyles.badge, { backgroundColor: badgeBg }]}>
+      <Text style={[signalStyles.badgeText, { color: badgeColor }]}>{badgeText}</Text>
+    </View>
+  );
+}
+
+const signalStyles = StyleSheet.create({
+  badge: {
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  badgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+});
+
 // ─── 스켈레톤 (도허티 임계 법칙) ─────────────────────────────────────────────
 
 function SkeletonRow() {
@@ -227,6 +285,12 @@ function SkeletonRow() {
         <View style={[styles.skeletonLine, { width: '40%' }]} />
         <View style={[styles.skeletonLine, { width: '70%', marginTop: 8 }]} />
         <View style={[styles.skeletonLine, { width: '90%', marginTop: 6 }]} />
+        {/* 모델 신호 스켈레톤 */}
+        <View style={{ flexDirection: 'row', gap: 6, marginTop: 8 }}>
+          <View style={[styles.skeletonLine, { width: 52, height: 22, borderRadius: 6 }]} />
+          <View style={[styles.skeletonLine, { width: 52, height: 22, borderRadius: 6 }]} />
+          <View style={[styles.skeletonLine, { width: 60, height: 22, borderRadius: 6 }]} />
+        </View>
       </View>
       <View style={styles.skeletonRight}>
         <View style={[styles.skeletonLine, { width: 44 }]} />
@@ -235,7 +299,7 @@ function SkeletonRow() {
   );
 }
 
-// ─── 종목 행 (ListRow 패턴 참고, reason 항상 노출) ───────────────────────────
+// ─── 종목 행 ─────────────────────────────────────────────────────────────────
 
 function StockRow({ item, rank, isLast }) {
   const confidencePct = Math.round((item.confidence ?? 0) * 100);
@@ -246,6 +310,19 @@ function StockRow({ item, rank, isLast }) {
       ? tdsColors.orange500
       : tdsColors.yellow500;
 
+  // 모델 신호 4개 이상이면 "동의" 카운트를 표시
+  const signalCount = [
+    item.xgb_prob != null && item.xgb_prob > 0.5 ? 1 : 0,
+    item.rl_signal === 'BUY' ? 1 : 0,
+    item.timesfm_signal === 'up' ? 1 : 0,
+    item.chronos_signal === 'up' ? 1 : 0,
+    item.moirai_signal === 'up' ? 1 : 0,
+  ].reduce((a, b) => a + b, 0);
+
+  // 모델 신호 존재 여부 (실제 데이터가 있는 날의 종목)
+  const hasSignals = item.xgb_prob != null || item.rl_signal != null ||
+    item.timesfm_signal != null || item.chronos_signal != null || item.moirai_signal != null;
+
   return (
     <View style={[styles.stockRow, !isLast && styles.stockRowBorder]}>
       {/* 좌: 순위 아바타 */}
@@ -253,14 +330,19 @@ function StockRow({ item, rank, isLast }) {
         <Text style={styles.rankText}>{rank}</Text>
       </View>
 
-      {/* 중: 종목 정보 + reason */}
+      {/* 중: 종목 정보 */}
       <View style={styles.stockBody}>
-        {/* 티커 + 섹터 */}
+        {/* 티커 + 섹터 + 동의 수 */}
         <View style={styles.stockTopRow}>
           <Text style={styles.stockTicker}>{item.ticker}</Text>
           <View style={styles.sectorChip}>
             <Text style={styles.sectorText} numberOfLines={1}>{item.sector}</Text>
           </View>
+          {hasSignals && signalCount >= 3 && (
+            <View style={styles.consensusChip}>
+              <Text style={styles.consensusText}>모델 동의 {signalCount}/5</Text>
+            </View>
+          )}
         </View>
 
         {/* reason — 항상 표시 (가장 중요한 정보) */}
@@ -274,6 +356,17 @@ function StockRow({ item, rank, isLast }) {
             style={[styles.barFill, { width: `${confidencePct}%`, backgroundColor: barColor }]}
           />
         </View>
+
+        {/* 모델 신호 뱃지 행 — 데이터 있을 때만 */}
+        {hasSignals && (
+          <View style={styles.signalRow}>
+            <SignalBadge label="XGB" value={item.xgb_prob} type="xgb" />
+            <SignalBadge label="RL" value={item.rl_signal} type="rl" />
+            <SignalBadge label="TimesFM" value={item.timesfm_signal} type="timesfm" />
+            <SignalBadge label="Chronos" value={item.chronos_signal} type="chronos" />
+            <SignalBadge label="Moirai" value={item.moirai_signal} type="moirai" />
+          </View>
+        )}
       </View>
 
       {/* 우: 신뢰도 % */}
@@ -325,11 +418,10 @@ export default function NewsScreen() {
     try {
       const [metaRes, stocksRes] = await Promise.all([
         fetchSp500MetaByDate(date),
-        // confidence 0.5 이상만 API에서 필터 (신뢰도 50% 이상)
         fetchSp500BullishByDate(date),
       ]);
       setMeta(metaRes.data);
-      // 클라이언트 측 confidence >= 0.5 필터
+      // confidence >= 0.5 필터
       setStocks((stocksRes.data || []).filter((s) => (s.confidence ?? 0) >= 0.5));
     } catch {
       setMeta(null);
@@ -477,7 +569,7 @@ const calStyles = StyleSheet.create({
   dotActive: { backgroundColor: '#fff' },
 });
 
-// ─── 메인 스타일 (계좌 탭과 동일 패턴 적용) ──────────────────────────────────
+// ─── 메인 스타일 (계좌 탭과 동일 패턴 + 신호 뱃지 추가) ─────────────────────
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: tdsDark.bgPrimary },
@@ -605,6 +697,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     marginBottom: 4,
+    flexWrap: 'wrap',
   },
   stockTicker: {
     fontSize: 15,
@@ -616,12 +709,23 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     paddingHorizontal: 7,
     paddingVertical: 2,
-    maxWidth: 130,
+    maxWidth: 110,
   },
   sectorText: {
     fontSize: 10,
     color: tdsColors.blue600,
     fontWeight: '600',
+  },
+  consensusChip: {
+    backgroundColor: `${tdsColors.red500}12`,
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  consensusText: {
+    fontSize: 10,
+    color: tdsColors.red500,
+    fontWeight: '700',
   },
   // reason — 항상 노출, 가장 중요한 정보
   reasonText: {
@@ -635,8 +739,16 @@ const styles = StyleSheet.create({
     backgroundColor: tdsDark.bgSecondary,
     borderRadius: 2,
     overflow: 'hidden',
+    marginBottom: 8,
   },
   barFill: { height: 3, borderRadius: 2 },
+
+  // ── 모델 신호 뱃지 행 ──
+  signalRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 5,
+  },
 
   // ── 우측 신뢰도 ──
   rightBlock: { alignItems: 'flex-end', minWidth: 48 },
