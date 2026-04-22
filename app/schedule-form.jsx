@@ -40,7 +40,7 @@ const TICKER_GROUPS = [
   { key: 'qqq',           label: 'QQQ (나스닥100)' },
   { key: 'nasdaq100',     label: '나스닥100' },
   { key: 'superinvestor', label: '슈퍼인베스터' },
-  { key: 'myholdings',    label: '보유종목' },
+  { key: 'sp500_news',    label: 'S&P 500 뉴스 분석 (전용)' },
   { key: 'kospi',         label: 'KOSPI' },
   { key: 'kosdaq',        label: 'KOSDAQ' },
 ];

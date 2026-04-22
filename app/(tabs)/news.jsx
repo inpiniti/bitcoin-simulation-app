@@ -17,14 +17,14 @@ import {
   ScrollView,
   StyleSheet,
   RefreshControl,
+  TouchableOpacity,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { TouchableOpacity } from 'react-native';
 import { tdsDark, tdsColors } from '../../constants/tdsColors';
 import {
   fetchSp500ActiveDates,
   fetchSp500MetaByDate,
-  fetchSp500BullishByDate,
+  fetchSp500ActionableByDate,
 } from '../../lib/sp500Api';
 
 // ─── 날짜 유틸 ────────────────────────────────────────────────────────────────
@@ -47,16 +47,61 @@ function getSundayOfWeek(d) {
 
 // ─── 화면 헤더 (계좌 탭과 동일 패턴) ─────────────────────────────────────────
 
+import { fetchSettings } from '../../lib/tradingApi';
+import { router } from 'expo-router';
+
 function ScreenHeader({ meta }) {
   const today = new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' });
   const total = (meta?.bullish_count ?? 0) + (meta?.bearish_count ?? 0) + (meta?.neutral_count ?? 0);
   const bullishPct = total > 0 ? Math.round((meta.bullish_count / total) * 100) : null;
 
+  const handleSettingsPress = async () => {
+    const { data } = await fetchSettings();
+    const existing = data?.find(s => s.ticker_group_key === 'sp500_news');
+    
+    if (existing) {
+      router.push({
+        pathname: '/schedule-form',
+        params: {
+          settingId: existing.id,
+          settingName: existing.name,
+          ticker_group_key: existing.ticker_group_key,
+          execution_time: existing.execution_time,
+          ai_model_key: existing.ai_model_key,
+          rl_model_key: existing.rl_model_key ?? '',
+          buy_condition: String(existing.buy_condition ?? 60),
+          sell_condition: String(existing.sell_condition ?? 30),
+          is_active: String(existing.is_active ?? true),
+          trade_enabled: String(existing.trade_enabled ?? false),
+        }
+      });
+    } else {
+      router.push({
+        pathname: '/schedule-form',
+        params: {
+          ticker_group_key: 'sp500_news',
+          settingName: 'S&P 500 뉴스 분석 설정'
+        }
+      });
+    }
+  };
+
   return (
     <View style={styles.screenHeader}>
-      <View>
-        <Text style={styles.headerEyebrow}>S&P 500 · 뉴스 분석</Text>
-        <Text style={styles.headerTitle}>시장 심리</Text>
+      <View style={{ flex: 1 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <View>
+            <Text style={styles.headerEyebrow}>S&P 500 · 뉴스 분석</Text>
+            <Text style={styles.headerTitle}>시장 심리</Text>
+          </View>
+          <TouchableOpacity 
+            style={styles.settingsBtn} 
+            onPress={handleSettingsPress}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="settings-outline" size={24} color={tdsDark.textPrimary} />
+          </TouchableOpacity>
+        </View>
         <Text style={styles.headerSub}>{today} 기준으로 분석해요</Text>
       </View>
       {bullishPct != null && (
@@ -303,23 +348,42 @@ function SkeletonRow() {
 
 function StockRow({ item, rank, isLast }) {
   const confidencePct = Math.round((item.confidence ?? 0) * 100);
-  const barColor =
-    confidencePct >= 80
-      ? tdsColors.red500
-      : confidencePct >= 65
-      ? tdsColors.orange500
-      : tdsColors.yellow500;
+  const isBullish = item.direction === 'bullish';
+  const barColor = isBullish
+    ? (confidencePct >= 80 ? tdsColors.red500 : confidencePct >= 65 ? tdsColors.orange500 : tdsColors.yellow500)
+    : (confidencePct >= 80 ? tdsColors.blue500 : confidencePct >= 65 ? tdsColors.blue300 : tdsColors.blue200);
 
-  // 모델 신호 4개 이상이면 "동의" 카운트를 표시
+  // 모델 신호 추출 유틸
+  const isUp = (val, type) => {
+    if (type === 'xgb') return val > 0.55;
+    if (type === 'rl') return val === 'BUY';
+    return val === 'up';
+  };
+  const isDown = (val, type) => {
+    if (type === 'xgb') return val < 0.45;
+    if (type === 'rl') return val === 'SELL';
+    return val === 'down';
+  };
+
   const signalCount = [
-    item.xgb_prob != null && item.xgb_prob > 0.5 ? 1 : 0,
-    item.rl_signal === 'BUY' ? 1 : 0,
-    item.timesfm_signal === 'up' ? 1 : 0,
-    item.chronos_signal === 'up' ? 1 : 0,
-    item.moirai_signal === 'up' ? 1 : 0,
+    isUp(item.xgb_prob, 'xgb') ? 1 : 0,
+    isUp(item.rl_signal, 'rl') ? 1 : 0,
+    isUp(item.timesfm_signal, 'timesfm') ? 1 : 0,
+    isUp(item.chronos_signal, 'chronos') ? 1 : 0,
+    isUp(item.moirai_signal, 'moirai') ? 1 : 0,
   ].reduce((a, b) => a + b, 0);
 
-  // 모델 신호 존재 여부 (실제 데이터가 있는 날의 종목)
+  const bearishCount = [
+    isDown(item.xgb_prob, 'xgb') ? 1 : 0,
+    isDown(item.rl_signal, 'rl') ? 1 : 0,
+    isDown(item.timesfm_signal, 'timesfm') ? 1 : 0,
+    isDown(item.chronos_signal, 'chronos') ? 1 : 0,
+    isDown(item.moirai_signal, 'moirai') ? 1 : 0,
+  ].reduce((a, b) => a + b, 0);
+
+  const consensusCount = isBullish ? signalCount : bearishCount;
+
+  // 모델 신호 존재 여부
   const hasSignals = item.xgb_prob != null || item.rl_signal != null ||
     item.timesfm_signal != null || item.chronos_signal != null || item.moirai_signal != null;
 
@@ -338,9 +402,11 @@ function StockRow({ item, rank, isLast }) {
           <View style={styles.sectorChip}>
             <Text style={styles.sectorText} numberOfLines={1}>{item.sector}</Text>
           </View>
-          {hasSignals && signalCount >= 3 && (
-            <View style={styles.consensusChip}>
-              <Text style={styles.consensusText}>모델 동의 {signalCount}/5</Text>
+          {hasSignals && consensusCount >= 3 && (
+            <View style={[styles.consensusChip, !isBullish && { backgroundColor: `${tdsColors.blue500}12` }]}>
+              <Text style={[styles.consensusText, !isBullish && { color: tdsColors.blue500 }]}>
+                모델 동의 {consensusCount}/5
+              </Text>
             </View>
           )}
         </View>
@@ -380,11 +446,11 @@ function StockRow({ item, rank, isLast }) {
 
 // ─── 섹션 헤더 ────────────────────────────────────────────────────────────────
 
-function SectionHeader({ count }) {
+function SectionHeader({ title, count, subtitle }) {
   return (
     <View style={styles.sectionHeaderRow}>
-      <Text style={styles.sectionTitle}>낙관 종목 · {count}개</Text>
-      <Text style={styles.sectionSub}>신뢰도 50% 이상 · 높은 순</Text>
+      <Text style={styles.sectionTitle}>{title} · {count}개</Text>
+      <Text style={styles.sectionSub}>{subtitle}</Text>
     </View>
   );
 }
@@ -418,11 +484,10 @@ export default function NewsScreen() {
     try {
       const [metaRes, stocksRes] = await Promise.all([
         fetchSp500MetaByDate(date),
-        fetchSp500BullishByDate(date),
+        fetchSp500ActionableByDate(date),
       ]);
       setMeta(metaRes.data);
-      // confidence >= 0.5 필터
-      setStocks((stocksRes.data || []).filter((s) => (s.confidence ?? 0) >= 0.5));
+      setStocks(stocksRes.data || []);
     } catch {
       setMeta(null);
       setStocks([]);
@@ -484,7 +549,7 @@ export default function NewsScreen() {
           <View style={styles.emptyBox}>
             <Text style={styles.emptyIcon}>📊</Text>
             <Text style={styles.emptyTitle}>
-              {selectedDate}에 분석된 낙관 종목이 없어요
+              {selectedDate}에 분석된 종목이 없어요
             </Text>
             <Text style={styles.emptyDesc}>
               달력에서 점이 표시된 날짜를 선택해 보세요{'\n'}
@@ -493,17 +558,47 @@ export default function NewsScreen() {
           </View>
         ) : (
           <>
-            <SectionHeader count={stocks.length} />
-            <View style={styles.listCard}>
-              {stocks.map((item, idx) => (
-                <StockRow
-                  key={item.ticker}
-                  item={item}
-                  rank={idx + 1}
-                  isLast={idx === stocks.length - 1}
+            {/* 낙관 섹션 */}
+            {stocks.filter(s => s.direction === 'bullish').length > 0 && (
+              <>
+                <SectionHeader 
+                  title="📈 낙관 종목" 
+                  count={stocks.filter(s => s.direction === 'bullish').length} 
+                  subtitle="매수 타이밍을 노려보세요"
                 />
-              ))}
-            </View>
+                <View style={styles.listCard}>
+                  {stocks.filter(s => s.direction === 'bullish').map((item, idx) => (
+                    <StockRow
+                      key={item.ticker}
+                      item={item}
+                      rank={idx + 1}
+                      isLast={idx === stocks.filter(s => s.direction === 'bullish').length - 1}
+                    />
+                  ))}
+                </View>
+              </>
+            )}
+
+            {/* 비관 섹션 */}
+            {stocks.filter(s => s.direction === 'bearish').length > 0 && (
+              <>
+                <SectionHeader 
+                  title="📉 비관 종목" 
+                  count={stocks.filter(s => s.direction === 'bearish').length} 
+                  subtitle="매도 또는 보류가 필요해요"
+                />
+                <View style={[styles.listCard, { marginTop: 8 }]}>
+                  {stocks.filter(s => s.direction === 'bearish').map((item, idx) => (
+                    <StockRow
+                      key={item.ticker}
+                      item={item}
+                      rank={idx + 1}
+                      isLast={idx === stocks.filter(s => s.direction === 'bearish').length - 1}
+                    />
+                  ))}
+                </View>
+              </>
+            )}
           </>
         )}
 
@@ -584,6 +679,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
+    gap: 8,
+  },
+  settingsBtn: {
+    padding: 4,
+    marginRight: -4,
   },
   headerEyebrow: { fontSize: 12, color: tdsDark.textTertiary, marginBottom: 2 },
   headerTitle: {

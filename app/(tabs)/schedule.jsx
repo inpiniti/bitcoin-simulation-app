@@ -39,6 +39,7 @@ const TICKER_GROUP_LABELS = {
   nasdaq100:     '나스닥100',
   superinvestor: '슈퍼인베스터',
   myholdings:    '보유종목',
+  sp500_news:    'S&P 500 뉴스 분석 (전용)',
   kospi:         'KOSPI',
   kosdaq:        'KOSDAQ',
   nasdaq:        'NASDAQ',
