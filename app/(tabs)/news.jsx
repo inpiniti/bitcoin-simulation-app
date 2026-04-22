@@ -1,7 +1,12 @@
 /**
  * S&P 500 뉴스 분석 화면
- * - 상단: 주간 달력 (데이터 있는 날 점 표시)
- * - 하단: bullish 종목 리스트 (confidence 내림차순)
+ *
+ * [TDS 규칙 적용]
+ * - 제이콥 법칙: 계좌 탭과 동일한 ScreenHeader + listCard 구조 사용
+ * - 도허티 임계: 스켈레톤 로딩 (ActivityIndicator 단독 사용 X)
+ * - 밀러 법칙: reason 항상 노출, confidence 50% 이상 필터
+ * - 피크엔드: 빈 상태 이모지 + 해요체 메시지
+ * - 심미적 사용성: 계좌 탭과 동일한 그림자·컬러·타이포그래피
  */
 import { useState, useEffect, useCallback } from 'react';
 import {
@@ -9,12 +14,11 @@ import {
   View,
   Text,
   ScrollView,
-  TouchableOpacity,
   StyleSheet,
-  ActivityIndicator,
   RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { TouchableOpacity } from 'react-native';
 import { tdsDark, tdsColors } from '../../constants/tdsColors';
 import {
   fetchSp500ActiveDates,
@@ -38,6 +42,29 @@ function getSundayOfWeek(d) {
   date.setDate(d.getDate() - d.getDay());
   date.setHours(0, 0, 0, 0);
   return date;
+}
+
+// ─── 화면 헤더 (계좌 탭과 동일 패턴) ─────────────────────────────────────────
+
+function ScreenHeader({ meta }) {
+  const today = new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' });
+  const total = (meta?.bullish_count ?? 0) + (meta?.bearish_count ?? 0) + (meta?.neutral_count ?? 0);
+  const bullishPct = total > 0 ? Math.round((meta.bullish_count / total) * 100) : null;
+
+  return (
+    <View style={styles.screenHeader}>
+      <View>
+        <Text style={styles.headerEyebrow}>S&P 500 · 뉴스 분석</Text>
+        <Text style={styles.headerTitle}>시장 심리</Text>
+        <Text style={styles.headerSub}>{today} 기준으로 분석해요</Text>
+      </View>
+      {bullishPct != null && (
+        <View style={styles.headerPill}>
+          <Text style={styles.headerPillText}>📈 낙관 {bullishPct}%</Text>
+        </View>
+      )}
+    </View>
+  );
 }
 
 // ─── 주간 달력 ────────────────────────────────────────────────────────────────
@@ -146,117 +173,126 @@ function WeekCalendar({ activeDates, selectedDate, onDateSelect }) {
   );
 }
 
-// ─── 메타 요약 카드 ───────────────────────────────────────────────────────────
+// ─── 요약 카드 (계좌 탭 portfolioCard 패턴) ──────────────────────────────────
 
 function MetaSummaryCard({ meta }) {
   if (!meta) return null;
   const total = (meta.bullish_count ?? 0) + (meta.bearish_count ?? 0) + (meta.neutral_count ?? 0);
-  const bullishPct = total > 0 ? ((meta.bullish_count / total) * 100).toFixed(0) : '0';
-  const bearishPct = total > 0 ? ((meta.bearish_count / total) * 100).toFixed(0) : '0';
 
   return (
-    <View style={styles.metaCard}>
-      <View style={styles.metaRow}>
-        <View style={styles.metaStat}>
-          <Text style={styles.metaStatValue}>{meta.news_count ?? '-'}</Text>
-          <Text style={styles.metaStatLabel}>수집 뉴스</Text>
+    <View style={styles.portfolioCard}>
+      <View style={styles.portfolioTopRow}>
+        <Text style={styles.portfolioTitle}>
+          {meta.news_count ?? '-'}건 뉴스 분석
+        </Text>
+        <View style={styles.portfolioMetaRight}>
+          <Text style={[styles.portfolioAvgRate, { color: tdsColors.red500 }]}>
+            📈 낙관 {meta.bullish_count ?? 0}종목
+          </Text>
+          <Text style={[styles.portfolioProfit, { color: tdsDark.textTertiary }]}>
+            전체 {total}종목 분석
+          </Text>
         </View>
-        <View style={styles.metaDivider} />
-        <View style={styles.metaStat}>
-          <Text style={[styles.metaStatValue, { color: tdsColors.red500 }]}>
+      </View>
+
+      <View style={styles.portfolioChips}>
+        <View style={[styles.portfolioChip, { backgroundColor: `${tdsColors.red500}15` }]}>
+          <Text style={[styles.portfolioChipName, { color: tdsColors.red500 }]}>📈 낙관</Text>
+          <Text style={[styles.portfolioChipRate, { color: tdsColors.red500 }]}>
             {meta.bullish_count ?? 0}
-            <Text style={styles.metaPct}> ({bullishPct}%)</Text>
           </Text>
-          <Text style={styles.metaStatLabel}>📈 낙관</Text>
         </View>
-        <View style={styles.metaDivider} />
-        <View style={styles.metaStat}>
-          <Text style={[styles.metaStatValue, { color: tdsColors.blue500 }]}>
+        <View style={[styles.portfolioChip, { backgroundColor: `${tdsColors.blue500}15` }]}>
+          <Text style={[styles.portfolioChipName, { color: tdsColors.blue500 }]}>📉 비관</Text>
+          <Text style={[styles.portfolioChipRate, { color: tdsColors.blue500 }]}>
             {meta.bearish_count ?? 0}
-            <Text style={styles.metaPct}> ({bearishPct}%)</Text>
           </Text>
-          <Text style={styles.metaStatLabel}>📉 비관</Text>
         </View>
-        <View style={styles.metaDivider} />
-        <View style={styles.metaStat}>
-          <Text style={[styles.metaStatValue, { color: tdsDark.textTertiary }]}>
-            {meta.neutral_count ?? 0}
-          </Text>
-          <Text style={styles.metaStatLabel}>➡️ 중립</Text>
+        <View style={styles.portfolioChip}>
+          <Text style={styles.portfolioChipName}>➡️ 중립</Text>
+          <Text style={styles.portfolioChipRate}>{meta.neutral_count ?? 0}</Text>
         </View>
       </View>
     </View>
   );
 }
 
-// ─── 종목 카드 ────────────────────────────────────────────────────────────────
+// ─── 스켈레톤 (도허티 임계 법칙) ─────────────────────────────────────────────
 
-function StockCard({ item, rank }) {
-  const [expanded, setExpanded] = useState(false);
+function SkeletonRow() {
+  return (
+    <View style={styles.skeletonRow}>
+      <View style={styles.skeletonAvatar} />
+      <View style={styles.skeletonBody}>
+        <View style={[styles.skeletonLine, { width: '40%' }]} />
+        <View style={[styles.skeletonLine, { width: '70%', marginTop: 8 }]} />
+        <View style={[styles.skeletonLine, { width: '90%', marginTop: 6 }]} />
+      </View>
+      <View style={styles.skeletonRight}>
+        <View style={[styles.skeletonLine, { width: 44 }]} />
+      </View>
+    </View>
+  );
+}
+
+// ─── 종목 행 (ListRow 패턴 참고, reason 항상 노출) ───────────────────────────
+
+function StockRow({ item, rank, isLast }) {
   const confidencePct = Math.round((item.confidence ?? 0) * 100);
-
-  // confidence 바 색상 (높을수록 진한 빨강)
   const barColor =
     confidencePct >= 80
       ? tdsColors.red500
-      : confidencePct >= 60
+      : confidencePct >= 65
       ? tdsColors.orange500
       : tdsColors.yellow500;
 
   return (
-    <TouchableOpacity
-      style={styles.stockCard}
-      onPress={() => setExpanded((v) => !v)}
-      activeOpacity={0.8}
-    >
-      {/* 상단 행 */}
-      <View style={styles.stockRow}>
-        {/* 순위 */}
-        <View style={styles.rankBadge}>
-          <Text style={styles.rankText}>{rank}</Text>
-        </View>
-
-        {/* 종목 정보 */}
-        <View style={styles.stockInfo}>
-          <View style={styles.stockTopRow}>
-            <Text style={styles.stockTicker}>{item.ticker}</Text>
-            <View style={styles.sectorBadge}>
-              <Text style={styles.sectorText} numberOfLines={1}>
-                {item.sector}
-              </Text>
-            </View>
-          </View>
-          <Text style={styles.stockName} numberOfLines={1}>
-            {item.name}
-          </Text>
-
-          {/* confidence 바 */}
-          <View style={styles.barTrack}>
-            <View style={[styles.barFill, { width: `${confidencePct}%`, backgroundColor: barColor }]} />
-          </View>
-        </View>
-
-        {/* 신뢰도 % */}
-        <View style={styles.confidenceBox}>
-          <Text style={[styles.confidenceValue, { color: barColor }]}>{confidencePct}%</Text>
-          <Text style={styles.confidenceLabel}>신뢰도</Text>
-        </View>
-
-        <Ionicons
-          name={expanded ? 'chevron-up' : 'chevron-down'}
-          size={14}
-          color={tdsDark.textTertiary}
-          style={{ marginLeft: 4 }}
-        />
+    <View style={[styles.stockRow, !isLast && styles.stockRowBorder]}>
+      {/* 좌: 순위 아바타 */}
+      <View style={styles.rankAvatar}>
+        <Text style={styles.rankText}>{rank}</Text>
       </View>
 
-      {/* 펼쳐지는 이유 */}
-      {expanded && (
-        <View style={styles.reasonBox}>
-          <Text style={styles.reasonText}>{item.reason || '분석 근거 없음'}</Text>
+      {/* 중: 종목 정보 + reason */}
+      <View style={styles.stockBody}>
+        {/* 티커 + 섹터 */}
+        <View style={styles.stockTopRow}>
+          <Text style={styles.stockTicker}>{item.ticker}</Text>
+          <View style={styles.sectorChip}>
+            <Text style={styles.sectorText} numberOfLines={1}>{item.sector}</Text>
+          </View>
         </View>
-      )}
-    </TouchableOpacity>
+
+        {/* reason — 항상 표시 (가장 중요한 정보) */}
+        <Text style={styles.reasonText} numberOfLines={3}>
+          {item.reason || '분석 근거 없음'}
+        </Text>
+
+        {/* confidence 바 */}
+        <View style={styles.barTrack}>
+          <View
+            style={[styles.barFill, { width: `${confidencePct}%`, backgroundColor: barColor }]}
+          />
+        </View>
+      </View>
+
+      {/* 우: 신뢰도 % */}
+      <View style={styles.rightBlock}>
+        <Text style={[styles.confidencePct, { color: barColor }]}>{confidencePct}%</Text>
+        <Text style={styles.confidenceLabel}>신뢰도</Text>
+      </View>
+    </View>
+  );
+}
+
+// ─── 섹션 헤더 ────────────────────────────────────────────────────────────────
+
+function SectionHeader({ count }) {
+  return (
+    <View style={styles.sectionHeaderRow}>
+      <Text style={styles.sectionTitle}>낙관 종목 · {count}개</Text>
+      <Text style={styles.sectionSub}>신뢰도 50% 이상 · 높은 순</Text>
+    </View>
   );
 }
 
@@ -268,7 +304,7 @@ export default function NewsScreen() {
   const [activeDates, setActiveDates] = useState(new Set());
   const [meta, setMeta] = useState(null);
   const [stocks, setStocks] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   // 활성 날짜 초기 로드
@@ -277,23 +313,24 @@ export default function NewsScreen() {
       const { data } = await fetchSp500ActiveDates(60);
       if (data && data.length > 0) {
         setActiveDates(new Set(data));
-        // 가장 최근 날짜를 기본 선택
         const latest = [...data].sort().reverse()[0];
         if (latest) setSelectedDate(latest);
       }
     })();
   }, []);
 
-  // 날짜 선택 시 데이터 로드
+  // 날짜 변경 시 데이터 로드
   const loadData = useCallback(async (date) => {
     setLoading(true);
     try {
       const [metaRes, stocksRes] = await Promise.all([
         fetchSp500MetaByDate(date),
+        // confidence 0.5 이상만 API에서 필터 (신뢰도 50% 이상)
         fetchSp500BullishByDate(date),
       ]);
       setMeta(metaRes.data);
-      setStocks(stocksRes.data || []);
+      // 클라이언트 측 confidence >= 0.5 필터
+      setStocks((stocksRes.data || []).filter((s) => (s.confidence ?? 0) >= 0.5));
     } catch {
       setMeta(null);
       setStocks([]);
@@ -313,87 +350,98 @@ export default function NewsScreen() {
   }, [selectedDate, loadData]);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      {/* 헤더 */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>S&P 500 뉴스 분석</Text>
-        <Text style={styles.headerSub}>뉴스 기반 낙관 종목 랭킹</Text>
-      </View>
+    <SafeAreaView style={styles.safe}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={tdsColors.blue500}
+          />
+        }
+      >
+        {/* 화면 헤더 — 계좌 탭과 동일 패턴 */}
+        <ScreenHeader meta={meta} />
 
-      {/* 주간 달력 */}
-      <WeekCalendar
-        activeDates={activeDates}
-        selectedDate={selectedDate}
-        onDateSelect={setSelectedDate}
-      />
+        {/* 주간 달력 */}
+        <WeekCalendar
+          activeDates={activeDates}
+          selectedDate={selectedDate}
+          onDateSelect={setSelectedDate}
+        />
 
-      {/* 컨텐츠 */}
-      {loading ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={tdsColors.blue500} size="large" />
-          <Text style={styles.loadingText}>분석 데이터 조회 중...</Text>
-        </View>
-      ) : (
-        <ScrollView
-          contentContainerStyle={styles.content}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={tdsColors.blue500}
-            />
-          }
-        >
-          {/* 요약 카드 */}
-          <MetaSummaryCard meta={meta} />
+        {/* 요약 카드 */}
+        <MetaSummaryCard meta={meta} />
 
-          {/* 섹션 타이틀 */}
-          {stocks.length > 0 && (
-            <View style={styles.sectionHeader}>
-              <View style={styles.bullishBadge}>
-                <Text style={styles.bullishBadgeText}>📈 BULLISH</Text>
-              </View>
-              <Text style={styles.sectionTitle}>낙관 종목 {stocks.length}개</Text>
-              <Text style={styles.sectionSub}>신뢰도 높은 순</Text>
+        {/* 종목 리스트 섹션 */}
+        {loading ? (
+          <>
+            <View style={styles.sectionHeaderRow}>
+              <View style={[styles.skeletonLine, { width: 120, height: 14, marginTop: 0 }]} />
             </View>
-          )}
-
-          {/* 종목 리스트 */}
-          {stocks.length === 0 ? (
-            <View style={styles.emptyBox}>
-              <Text style={styles.emptyIcon}>📊</Text>
-              <Text style={styles.emptyTitle}>{selectedDate} 분석 데이터 없음</Text>
-              <Text style={styles.emptyDesc}>
-                매일 새벽 자동으로 분석이 실행됩니다{'\n'}달력에서 점이 표시된 날짜를 선택해 보세요
-              </Text>
+            <View style={styles.listCard}>
+              {[1, 2, 3, 4].map((i) => (
+                <SkeletonRow key={i} />
+              ))}
             </View>
-          ) : (
-            stocks.map((item, idx) => (
-              <StockCard key={item.ticker} item={item} rank={idx + 1} />
-            ))
-          )}
-          <View style={{ height: 32 }} />
-        </ScrollView>
-      )}
+          </>
+        ) : stocks.length === 0 ? (
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyIcon}>📊</Text>
+            <Text style={styles.emptyTitle}>
+              {selectedDate}에 분석된 낙관 종목이 없어요
+            </Text>
+            <Text style={styles.emptyDesc}>
+              달력에서 점이 표시된 날짜를 선택해 보세요{'\n'}
+              매일 새벽 자동으로 분석이 실행돼요
+            </Text>
+          </View>
+        ) : (
+          <>
+            <SectionHeader count={stocks.length} />
+            <View style={styles.listCard}>
+              {stocks.map((item, idx) => (
+                <StockRow
+                  key={item.ticker}
+                  item={item}
+                  rank={idx + 1}
+                  isLast={idx === stocks.length - 1}
+                />
+              ))}
+            </View>
+          </>
+        )}
+
+        <View style={{ height: 32 }} />
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
-// ─── 스타일 ───────────────────────────────────────────────────────────────────
+// ─── 달력 스타일 ──────────────────────────────────────────────────────────────
 
 const calStyles = StyleSheet.create({
   container: {
     backgroundColor: tdsDark.bgCard,
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 20,
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: tdsDark.border,
+    paddingVertical: 14,
+    shadowColor: '#000000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   nav: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 10,
+    marginBottom: 12,
   },
   monthLabel: {
     fontSize: 14,
@@ -404,10 +452,7 @@ const calStyles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
   },
-  dayCol: {
-    alignItems: 'center',
-    width: 40,
-  },
+  dayCol: { alignItems: 'center', width: 40 },
   dayLabel: {
     fontSize: 11,
     color: tdsDark.textTertiary,
@@ -420,254 +465,221 @@ const calStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  dateCircleActive: {
-    backgroundColor: tdsColors.blue500,
-  },
+  dateCircleActive: { backgroundColor: tdsColors.blue500 },
   dateNum: {
     fontSize: 14,
     fontWeight: '500',
     color: tdsDark.textPrimary,
   },
-  dateNumActive: {
-    color: tdsColors.white,
-    fontWeight: '700',
-  },
-  dotRow: {
-    marginTop: 3,
-    height: 5,
-    alignItems: 'center',
-  },
-  dot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: tdsColors.blue500,
-  },
-  dotActive: {
-    backgroundColor: tdsColors.white,
-  },
+  dateNumActive: { color: '#fff', fontWeight: '700' },
+  dotRow: { marginTop: 3, height: 5, alignItems: 'center' },
+  dot: { width: 4, height: 4, borderRadius: 2, backgroundColor: tdsColors.blue500 },
+  dotActive: { backgroundColor: '#fff' },
 });
 
+// ─── 메인 스타일 (계좌 탭과 동일 패턴 적용) ──────────────────────────────────
+
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: tdsDark.bgPrimary,
+  safe: { flex: 1, backgroundColor: tdsDark.bgPrimary },
+  scroll: { flex: 1 },
+  content: { paddingTop: 8, paddingBottom: 32 },
+
+  // ── 헤더 (account.jsx 완전 동일) ──
+  screenHeader: {
+    marginHorizontal: 16,
+    marginTop: 4,
+    marginBottom: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
   },
-  header: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 12,
-    backgroundColor: tdsDark.bgCard,
-  },
+  headerEyebrow: { fontSize: 12, color: tdsDark.textTertiary, marginBottom: 2 },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: '700',
+    fontSize: 28,
+    fontWeight: '800',
     color: tdsDark.textPrimary,
+    letterSpacing: -0.5,
   },
-  headerSub: {
-    fontSize: 13,
-    color: tdsDark.textTertiary,
-    marginTop: 2,
+  headerSub: { fontSize: 13, color: tdsDark.textSecondary, marginTop: 2 },
+  headerPill: {
+    marginTop: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: tdsColors.blue50,
+    borderWidth: 1,
+    borderColor: `${tdsColors.blue500}33`,
   },
-  center: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-  },
-  loadingText: {
-    fontSize: 14,
-    color: tdsDark.textTertiary,
-  },
-  content: {
-    paddingBottom: 24,
-  },
-  // 메타 요약 카드
-  metaCard: {
-    backgroundColor: tdsDark.bgCard,
+  headerPillText: { fontSize: 12, color: tdsColors.blue700, fontWeight: '600' },
+
+  // ── 요약 카드 (account.jsx portfolioCard 완전 동일) ──
+  portfolioCard: {
     marginHorizontal: 16,
     marginTop: 12,
-    borderRadius: 12,
     padding: 16,
-    shadowColor: tdsDark.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 1,
-    shadowRadius: 6,
+    borderRadius: 20,
+    backgroundColor: tdsDark.bgCard,
+    shadowColor: '#000000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
     elevation: 2,
   },
-  metaRow: {
+  portfolioTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  portfolioTitle: { fontSize: 14, fontWeight: '600', color: tdsDark.textPrimary },
+  portfolioAvgRate: { fontSize: 16, fontWeight: '700' },
+  portfolioMetaRight: { alignItems: 'flex-end', gap: 4 },
+  portfolioProfit: { fontSize: 13, fontWeight: '600' },
+  portfolioChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  portfolioChip: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: tdsDark.bgSecondary,
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    gap: 6,
   },
-  metaStat: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  metaStatValue: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: tdsDark.textPrimary,
-  },
-  metaPct: {
-    fontSize: 12,
-    fontWeight: '400',
-  },
-  metaStatLabel: {
-    fontSize: 11,
-    color: tdsDark.textTertiary,
-    marginTop: 3,
-  },
-  metaDivider: {
-    width: StyleSheet.hairlineWidth,
-    height: 36,
-    backgroundColor: tdsDark.border,
-  },
-  // 섹션 헤더
-  sectionHeader: {
+  portfolioChipName: { fontSize: 13, color: tdsDark.textSecondary },
+  portfolioChipRate: { fontSize: 13, fontWeight: '600', color: tdsDark.textPrimary },
+
+  // ── 섹션 헤더 (account.jsx sectionTitle 패턴) ──
+  sectionHeaderRow: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
+    marginHorizontal: 20,
     marginTop: 20,
-    marginBottom: 8,
-  },
-  bullishBadge: {
-    backgroundColor: `${tdsColors.red500}15`,
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  bullishBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: tdsColors.red500,
+    marginBottom: 6,
   },
   sectionTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: tdsDark.textPrimary,
-    flex: 1,
+    fontSize: 13,
+    color: tdsDark.textSecondary,
+    fontWeight: '600',
   },
   sectionSub: {
     fontSize: 12,
     color: tdsDark.textTertiary,
   },
-  // 종목 카드
-  stockCard: {
+
+  // ── 리스트 카드 (account.jsx listCard 완전 동일) ──
+  listCard: {
+    marginTop: 4,
     backgroundColor: tdsDark.bgCard,
-    marginHorizontal: 16,
-    marginBottom: 8,
-    borderRadius: 12,
-    padding: 14,
-    shadowColor: tdsDark.shadow,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 1,
-    shadowRadius: 4,
-    elevation: 1,
   },
+
+  // ── 종목 행 ──
   stockRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
   },
-  rankBadge: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+  stockRowBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: tdsDark.border,
+  },
+  rankAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: tdsDark.bgSecondary,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 10,
+    marginRight: 12,
+    marginTop: 2,
   },
   rankText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
     color: tdsDark.textSecondary,
   },
-  stockInfo: {
-    flex: 1,
-    marginRight: 8,
-  },
+  stockBody: { flex: 1, marginRight: 12 },
   stockTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 2,
+    marginBottom: 4,
   },
   stockTicker: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
     color: tdsDark.textPrimary,
   },
-  sectorBadge: {
+  sectorChip: {
     backgroundColor: `${tdsColors.blue500}12`,
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    maxWidth: 120,
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    maxWidth: 130,
   },
   sectorText: {
     fontSize: 10,
     color: tdsColors.blue600,
     fontWeight: '600',
   },
-  stockName: {
-    fontSize: 12,
-    color: tdsDark.textTertiary,
-    marginBottom: 6,
-  },
-  barTrack: {
-    height: 4,
-    backgroundColor: tdsDark.bgSecondary,
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  barFill: {
-    height: 4,
-    borderRadius: 2,
-  },
-  confidenceBox: {
-    alignItems: 'flex-end',
-    marginRight: 4,
-  },
-  confidenceValue: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  confidenceLabel: {
-    fontSize: 10,
-    color: tdsDark.textTertiary,
-    marginTop: 1,
-  },
-  reasonBox: {
-    marginTop: 10,
-    backgroundColor: tdsDark.bgSecondary,
-    borderRadius: 8,
-    padding: 10,
-  },
+  // reason — 항상 노출, 가장 중요한 정보
   reasonText: {
     fontSize: 13,
     color: tdsDark.textSecondary,
     lineHeight: 19,
-  },
-  // 빈 상태
-  emptyBox: {
-    alignItems: 'center',
-    paddingVertical: 60,
-    paddingHorizontal: 32,
-  },
-  emptyIcon: {
-    fontSize: 40,
-    marginBottom: 12,
-  },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: tdsDark.textSecondary,
     marginBottom: 8,
+  },
+  barTrack: {
+    height: 3,
+    backgroundColor: tdsDark.bgSecondary,
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  barFill: { height: 3, borderRadius: 2 },
+
+  // ── 우측 신뢰도 ──
+  rightBlock: { alignItems: 'flex-end', minWidth: 48 },
+  confidencePct: { fontSize: 15, fontWeight: '700' },
+  confidenceLabel: { fontSize: 11, color: tdsDark.textTertiary, marginTop: 2 },
+
+  // ── 스켈레톤 (account.jsx 동일) ──
+  skeletonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: tdsDark.border,
+  },
+  skeletonAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#e8ecef',
+    marginRight: 12,
+  },
+  skeletonBody: { flex: 1 },
+  skeletonRight: { alignItems: 'flex-end' },
+  skeletonLine: {
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#e8ecef',
+  },
+
+  // ── 빈 상태 (피크엔드 법칙: 이모지 + 해요체) ──
+  emptyBox: { alignItems: 'center', paddingVertical: 48, paddingHorizontal: 32 },
+  emptyIcon: { fontSize: 40, marginBottom: 12 },
+  emptyTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: tdsDark.textPrimary,
+    marginBottom: 8,
+    textAlign: 'center',
   },
   emptyDesc: {
     fontSize: 13,
-    color: tdsDark.textTertiary,
+    color: tdsDark.textSecondary,
     textAlign: 'center',
     lineHeight: 20,
   },
