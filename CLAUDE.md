@@ -15,12 +15,12 @@
 
 ## 2. 탭 구조
 
-| 탭 | 파일 | 아이콘 | 설명 |
-|---|---|---|---|
-| 계좌 | `app/(tabs)/account.jsx` | Wallet | 보유잔고 + 예수금 |
-| 모델 | `app/(tabs)/model.jsx` | Brain | 예측 + 학습 |
-| 예약 | `app/(tabs)/schedule.jsx` | Clock | 설정 + 로그 |
-| 티커 | `app/(tabs)/ticker.jsx` | BarChart2 | 목록 + 매수 |
+| 탭   | 파일                      | 아이콘    | 설명              |
+| ---- | ------------------------- | --------- | ----------------- |
+| 계좌 | `app/(tabs)/account.jsx`  | Wallet    | 보유잔고 + 예수금 |
+| 모델 | `app/(tabs)/model.jsx`    | Brain     | 예측 + 학습       |
+| 예약 | `app/(tabs)/schedule.jsx` | Clock     | 설정 + 로그       |
+| 티커 | `app/(tabs)/ticker.jsx`   | BarChart2 | 목록 + 매수       |
 
 ---
 
@@ -33,11 +33,13 @@
 **목적**: KIS API 연동 계좌 현황 확인 및 주문
 
 **상단**: 예수금(주문가능금액) 표시
+
 ```
 예수금  ₩12,345,678
 ```
 
 **보유잔고 목록** (종목별 카드):
+
 ```
 [로고] 삼성전자  005930
        수익률  +3.24%   (수익이면 빨강, 손실이면 초록)
@@ -47,6 +49,7 @@
 ```
 
 **필드 정의**:
+
 - `logo`: 종목 로고 이미지 (없으면 티커 이니셜 뱃지)
 - `ticker`: 종목코드 (예: 005930)
 - `name`: 종목명 (예: 삼성전자)
@@ -66,6 +69,7 @@
 **내부 탭 2개**: `예측` | `학습`
 
 #### 예측 서브탭
+
 ```
 시장    [KOSPI ▼]
 기간    [30일 ▼]   (7일 / 14일 / 30일 / 60일)
@@ -79,6 +83,7 @@ AAPL     BUY       0.82       0.18
 ```
 
 **필드**:
+
 - `market`: 시장 선택 (KOSPI, KOSDAQ, NASDAQ, NYSE 등)
 - `period`: 학습 기간 선택 (7 / 14 / 30 / 60일)
 - 결과 테이블: ticker, signal, buy_probability, sell_probability
@@ -86,6 +91,7 @@ AAPL     BUY       0.82       0.18
 **API**: `POST /v1/xgb/predict` (기존 xgbApi.js 활용)
 
 #### 학습 서브탭
+
 ```
 시장    [KOSPI ▼]
 기간    [30일 ▼]
@@ -99,6 +105,7 @@ AAPL     BUY       0.82       0.18
 ```
 
 **필드**:
+
 - `market`: 시장 선택
 - `period`: 기간 선택
 - 진행률 바 + 실시간 로그 (WebSocket)
@@ -114,6 +121,7 @@ AAPL     BUY       0.82       0.18
 **내부 탭 2개**: `설정` | `로그`
 
 #### 설정 서브탭
+
 ```
 시장        [KOSPI ▼]
 기간        [30일 ▼]
@@ -125,6 +133,7 @@ AAPL     BUY       0.82       0.18
 ```
 
 **필드**:
+
 - `market`: 시장
 - `period`: 기간 (7 / 14 / 30 / 60일)
 - `model`: 사용할 모델 (XGBoost, 향후 확장 가능)
@@ -135,6 +144,7 @@ AAPL     BUY       0.82       0.18
 **API**: Supabase `automation_settings` CRUD (기존 tradingApi.js 활용)
 
 #### 로그 서브탭
+
 ```
 2026-04-10 09:15  005930  매수확률 0.82
 2026-04-10 09:15  AAPL    매도확률 0.63
@@ -142,6 +152,7 @@ AAPL     BUY       0.82       0.18
 ```
 
 **필드**:
+
 - `created_at`: 날짜/시간
 - `ticker`: 종목코드
 - `probability`: 확률값 (매수/매도 구분 뱃지 포함)
@@ -155,6 +166,7 @@ AAPL     BUY       0.82       0.18
 **목적**: 관심 종목 목록 확인 및 즉시 매수
 
 **목록 형태** (스크롤 가능):
+
 ```
 [로고]  삼성전자   005930
         오늘 +1.23%         현재가  ₩74,330
@@ -166,6 +178,7 @@ AAPL     BUY       0.82       0.18
 ```
 
 **필드**:
+
 - `logo`: 종목 로고
 - `name`: 종목명
 - `ticker`: 종목코드
@@ -173,7 +186,8 @@ AAPL     BUY       0.82       0.18
 - `current_price`: 현재가
 - 매수 버튼: 탭 시 수량 입력 모달 → 주문 실행
 
-**API**: 
+**API**:
+
 - 종목 목록: Supabase `ticker_group` 또는 백엔드 `/tickers`
 - 현재가: KIS API 또는 백엔드 시세 엔드포인트
 - 매수 주문: KIS `/kis/order`
@@ -183,18 +197,22 @@ AAPL     BUY       0.82       0.18
 ## 4. 공통 UI 규칙
 
 ### 수익률 색상 (한국 증시 관행)
+
 - 양수(상승) → `signalBuy` = `#f23645` (빨강)
 - 음수(하락) → `signalSell` = `#089981` (초록)
 
 ### 금액 포맷
+
 - 원화: `₩1,234,567` (천단위 콤마)
 - 확률: `0.82` 또는 `82%` 중 화면에 맞게
 
 ### 내부 탭 (서브탭)
+
 - 탭 전환은 상단 세그먼트 컨트롤 스타일 (`예측 | 학습` 등)
 - 기존 `Card`, `Badge`, `Button` 컴포넌트 재활용
 
 ### 로딩 / 에러
+
 - 로딩: ActivityIndicator 중앙 표시
 - 에러: 빨간 텍스트 + 재시도 버튼
 
@@ -203,6 +221,7 @@ AAPL     BUY       0.82       0.18
 ## 5. 파일 변경 계획
 
 ### 삭제
+
 - `app/(tabs)/server.jsx`
 - `app/(tabs)/ai.jsx`
 - `app/(tabs)/news.jsx`
@@ -213,6 +232,7 @@ AAPL     BUY       0.82       0.18
 - `store/useNewsStore.js`
 
 ### 신규 생성
+
 - `app/(tabs)/account.jsx` — 계좌 탭
 - `app/(tabs)/model.jsx` — 모델 탭
 - `app/(tabs)/schedule.jsx` — 예약 탭
@@ -220,11 +240,13 @@ AAPL     BUY       0.82       0.18
 - `lib/kisApi.js` — KIS 잔고/주문 API
 
 ### 수정
+
 - `app/(tabs)/_layout.jsx` — 4탭으로 교체
 - `app/index.jsx` — 기본 탭을 `account`로 변경
 - `store/useStore.js` — 불필요한 상태 정리
 
 ### 유지
+
 - `lib/tradingApi.js` — 예약 설정/로그 (Supabase)
 - `lib/xgbApi.js` — 예측/학습 API
 - `lib/supabaseClient.js`
@@ -262,3 +284,22 @@ AAPL     BUY       0.82       0.18
 - [ ] 현재가 조회 방식 — KIS 실시간 or 백엔드 polling
 - [ ] 로고 이미지 소스 — 외부 CDN 사용 여부 (없으면 이니셜 뱃지로 대체)
 - [ ] `market` 선택지 — KOSPI / KOSDAQ / NASDAQ / NYSE 고정값 or 동적
+
+## 8. 뉴스 파이프 라인
+
+1.  google, yhaoo 뉴스 크롤링
+2.  뉴스를 gpt에게 전달하기 위한 작업
+3.  gemini에게 분석
+4.  신뢰도가 50이상이면서, 낙관적인 종목에 한해서만
+
+        4-1. 종목별로 XGBoost % 추가
+        4-2. 종목별로 강화학습 % 추가
+        4-3. 종목별로 TimesFM 예측 추가
+        4-4. 종목별로 amazon/chronos-2 예측추가
+        4-5. 종목별로 Salesforce/moirai-moe-1.0-R-base 예측추가
+        4-6(A). Reddit & Stocktwits: 커뮤니티형 소문 (집단 지성과 밈 분석)
+        4-6(B). Yahoo Finance: 포털형 토론 (대중적인 매수/매도 심리)
+        4-6(C). X (Twitter): 실시간 전파형 소문 (전문가 및 속보성 루머)
+        4-7. 종목별 토론 분석추가
+
+5.  결과를 db에 저장 (4,5,6도 추가하여)
