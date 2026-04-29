@@ -258,10 +258,10 @@ function SignalBadge({ label, value, type, iconUrl }) {
     else { badgeText = '🤖 HOLD'; badgeBg = `${tdsDark.textTertiary}18`; badgeColor = tdsDark.textTertiary; }
   } else if (type === 'rumors') {
     const conf = Math.round(value * 100);
-    const emoji = label === 'positive' ? '📈' : label === 'negative' ? '📉' : '➡️';
-    badgeText = `${emoji} ${label} ${conf}%`;
-    if (label === 'positive') { badgeBg = `${tdsColors.red500}18`; badgeColor = tdsColors.red500; }
-    else if (label === 'negative') { badgeBg = `${tdsColors.blue500}18`; badgeColor = tdsColors.blue500; }
+    const emoji = label === 'BUY' ? '📈' : label === 'SELL' ? '📉' : '➡️';
+    badgeText = `${emoji} 소문 ${label} ${conf}%`;
+    if (label === 'BUY') { badgeBg = `${tdsColors.red500}18`; badgeColor = tdsColors.red500; }
+    else if (label === 'SELL') { badgeBg = `${tdsColors.blue500}18`; badgeColor = tdsColors.blue500; }
     else { badgeBg = `${tdsDark.textTertiary}18`; badgeColor = tdsDark.textTertiary; }
   } else {
     // TimesFM / Chronos / Moirai - 모델 풀네임 표시
@@ -386,7 +386,7 @@ function StockRow({ item, rank, isLast }) {
   // 모델 신호 존재 여부 (소문 포함)
   const hasSignals = item.xgb_prob != null || item.rl_signal != null ||
     item.timesfm_signal != null || item.chronos_signal != null || item.moirai_signal != null ||
-    item.rumors_sentiment != null;
+    item.rumors_signal != null;
 
   return (
     <View style={[styles.stockRow, !isLast && styles.stockRowBorder]}>
@@ -447,9 +447,9 @@ function StockRow({ item, rank, isLast }) {
               type="moirai"
               iconUrl="https://cdn-avatars.huggingface.co/v1/production/uploads/1602756670970-noauth.jpeg"
             />
-            {item.rumors_sentiment && (
+            {item.rumors_signal && (
               <SignalBadge
-                label={item.rumors_sentiment}
+                label={item.rumors_signal}
                 value={item.rumors_confidence}
                 type="rumors"
               />
