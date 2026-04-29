@@ -18,6 +18,7 @@ import {
   StyleSheet,
   RefreshControl,
   TouchableOpacity,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { tdsDark, tdsColors } from '../../constants/tdsColors';
@@ -237,12 +238,13 @@ function MetaSummaryCard({ meta }) {
  * - RL: rl_signal (BUY/HOLD/SELL)
  * - TimesFM/Chronos/Moirai: signal (up/down)
  */
-function SignalBadge({ label, value, type }) {
+function SignalBadge({ label, value, type, iconUrl }) {
   if (value == null || value === undefined) return null;
 
   let badgeText = '';
   let badgeBg = tdsDark.bgSecondary;
   let badgeColor = tdsDark.textSecondary;
+  let displayLabel = label;
 
   if (type === 'xgb') {
     const pct = Math.round(value * 100);
@@ -254,27 +256,59 @@ function SignalBadge({ label, value, type }) {
     if (value === 'BUY') { badgeText = '🤖 BUY'; badgeBg = `${tdsColors.red500}18`; badgeColor = tdsColors.red500; }
     else if (value === 'SELL') { badgeText = '🤖 SELL'; badgeBg = `${tdsColors.blue500}18`; badgeColor = tdsColors.blue500; }
     else { badgeText = '🤖 HOLD'; badgeBg = `${tdsDark.textTertiary}18`; badgeColor = tdsDark.textTertiary; }
+  } else if (type === 'rumors') {
+    const conf = Math.round(value * 100);
+    const emoji = label === 'positive' ? '📈' : label === 'negative' ? '📉' : '➡️';
+    badgeText = `${emoji} ${label} ${conf}%`;
+    if (label === 'positive') { badgeBg = `${tdsColors.red500}18`; badgeColor = tdsColors.red500; }
+    else if (label === 'negative') { badgeBg = `${tdsColors.blue500}18`; badgeColor = tdsColors.blue500; }
+    else { badgeBg = `${tdsDark.textTertiary}18`; badgeColor = tdsDark.textTertiary; }
   } else {
-    // TimesFM / Chronos / Moirai
+    // TimesFM / Chronos / Moirai - 모델 풀네임 표시
+    const modelNames = {
+      'timesfm': 'google/TimesFM',
+      'chronos': 'amazon/Chronos',
+      'moirai': 'salesforce/Moirai',
+    };
+    displayLabel = modelNames[type] || label;
+
     if (value === 'up') {
-      badgeText = `▲ ${label}`;
+      badgeText = `▲ ${displayLabel}`;
       badgeBg = `${tdsColors.red500}18`;
       badgeColor = tdsColors.red500;
     } else {
-      badgeText = `▼ ${label}`;
+      badgeText = `▼ ${displayLabel}`;
       badgeBg = `${tdsColors.blue500}18`;
       badgeColor = tdsColors.blue500;
     }
   }
 
   return (
-    <View style={[signalStyles.badge, { backgroundColor: badgeBg }]}>
-      <Text style={[signalStyles.badgeText, { color: badgeColor }]}>{badgeText}</Text>
+    <View style={signalStyles.badgeContainer}>
+      {iconUrl && (
+        <Image
+          source={{ uri: iconUrl }}
+          style={signalStyles.badgeIcon}
+        />
+      )}
+      <View style={[signalStyles.badge, { backgroundColor: badgeBg }]}>
+        <Text style={[signalStyles.badgeText, { color: badgeColor }]}>{badgeText}</Text>
+      </View>
     </View>
   );
 }
 
 const signalStyles = StyleSheet.create({
+  badgeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  badgeIcon: {
+    width: 16,
+    height: 16,
+    borderRadius: 3,
+  },
   badge: {
     borderRadius: 6,
     paddingHorizontal: 7,
@@ -349,9 +383,10 @@ function StockRow({ item, rank, isLast }) {
 
   const consensusCount = isBullish ? signalCount : bearishCount;
 
-  // 모델 신호 존재 여부
+  // 모델 신호 존재 여부 (소문 포함)
   const hasSignals = item.xgb_prob != null || item.rl_signal != null ||
-    item.timesfm_signal != null || item.chronos_signal != null || item.moirai_signal != null;
+    item.timesfm_signal != null || item.chronos_signal != null || item.moirai_signal != null ||
+    item.rumors_sentiment != null;
 
   return (
     <View style={[styles.stockRow, !isLast && styles.stockRowBorder]}>
@@ -394,9 +429,31 @@ function StockRow({ item, rank, isLast }) {
           <View style={styles.signalRow}>
             <SignalBadge label="XGB" value={item.xgb_prob} type="xgb" />
             <SignalBadge label="RL" value={item.rl_signal} type="rl" />
-            <SignalBadge label="TimesFM" value={item.timesfm_signal} type="timesfm" />
-            <SignalBadge label="Chronos" value={item.chronos_signal} type="chronos" />
-            <SignalBadge label="Moirai" value={item.moirai_signal} type="moirai" />
+            <SignalBadge
+              label="TimesFM"
+              value={item.timesfm_signal}
+              type="timesfm"
+              iconUrl="https://cdn-avatars.huggingface.co/v1/production/uploads/5dd96eb166059660ed1ee413/WtA3YYitedOr9n02eHfJe.png"
+            />
+            <SignalBadge
+              label="Chronos"
+              value={item.chronos_signal}
+              type="chronos"
+              iconUrl="https://cdn-avatars.huggingface.co/v1/production/uploads/66f19ed428ae41c20c470792/8y7msN6A6W82LdQhQd85a.png"
+            />
+            <SignalBadge
+              label="Moirai"
+              value={item.moirai_signal}
+              type="moirai"
+              iconUrl="https://cdn-avatars.huggingface.co/v1/production/uploads/1602756670970-noauth.jpeg"
+            />
+            {item.rumors_sentiment && (
+              <SignalBadge
+                label={item.rumors_sentiment}
+                value={item.rumors_confidence}
+                type="rumors"
+              />
+            )}
           </View>
         )}
       </View>
