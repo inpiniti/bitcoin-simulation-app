@@ -422,9 +422,10 @@ function StockRow({ item, rank, isLast, selectedDate }) {
 
   const consensusCount = isBullish ? signalCount : bearishCount;
 
-  // 모델 신호 존재 여부
+  // 모델 신호 존재 여부 (소문 포함)
   const hasSignals = item.xgb_prob != null || item.rl_signal != null ||
-    item.timesfm_signal != null || item.chronos_signal != null || item.moirai_signal != null;
+    item.timesfm_signal != null || item.chronos_signal != null || item.moirai_signal != null ||
+    item.rumors_signal != null;
 
   // 그림2 기준 — 1줄 compact 시그널 items
   const signalItems = [];
@@ -449,6 +450,11 @@ function StockRow({ item, rank, isLast, selectedDate }) {
   if (item.moirai_signal != null) {
     const up = item.moirai_signal === 'up';
     signalItems.push({ key: 'moirai', up, down: !up, label: 'moirai' });
+  }
+  if (item.rumors_signal != null) {
+    const up = item.rumors_signal === 'BUY';
+    const down = item.rumors_signal === 'SELL';
+    signalItems.push({ key: 'rumors', up, down, label: 'rumors' });
   }
 
   return (
@@ -480,6 +486,13 @@ function StockRow({ item, rank, isLast, selectedDate }) {
           <Text style={styles.reasonText} numberOfLines={2}>
             {item.reason || '분석 근거 없음'}
           </Text>
+
+          {/* 소문 이유 */}
+          {item.rumors_signal && item.rumors_reason && (
+            <Text style={styles.rumorsReasonText} numberOfLines={1}>
+              💭 소문 {item.rumors_signal} · {item.rumors_reason}
+            </Text>
+          )}
 
           {/* 그림2: 모델 시그널 1줄 compact — ▲/▼ xgb · ▲/▼ rl · ▲/▼ times ... */}
           {signalItems.length > 0 && (
@@ -917,7 +930,15 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: tdsDark.textSecondary,
     lineHeight: 19,
+    marginBottom: 6,
+  },
+  // 소문 이유
+  rumorsReasonText: {
+    fontSize: 12,
+    color: tdsDark.textTertiary,
+    lineHeight: 17,
     marginBottom: 8,
+    fontStyle: 'italic',
   },
   barTrack: {
     height: 3,
