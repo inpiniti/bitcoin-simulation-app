@@ -30,6 +30,7 @@ import {
   fetchSp500ActiveDates,
   fetchSp500MetaByDate,
   fetchSp500ActionableByDate,
+  fetchSp500HourlyByDate,
 } from '../../lib/sp500Api';
 import { fetchTickerWeeklyCloses } from '../../lib/priceApi';
 import { ActivityIndicator } from 'react-native';
@@ -551,6 +552,47 @@ function SectionHeader({ title, count, subtitle }) {
   );
 }
 
+// ─── 시간대 탭 (Option 2: 수평 스크롤) ─────────────────────────────────────────
+
+function HourlyTimeTabs({ times, selectedTime, onSelectTime, loading }) {
+  if (!times || times.length === 0) return null;
+
+  return (
+    <View style={hourlyTabStyles.container}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={hourlyTabStyles.scrollContent}
+      >
+        {times.map((time) => {
+          const isSelected = time === selectedTime;
+          return (
+            <TouchableOpacity
+              key={time}
+              onPress={() => !loading && onSelectTime(time)}
+              style={[
+                hourlyTabStyles.tab,
+                isSelected && hourlyTabStyles.tabActive,
+              ]}
+              disabled={loading}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  hourlyTabStyles.tabText,
+                  isSelected && hourlyTabStyles.tabTextActive,
+                ]}
+              >
+                {time}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}
+
 // ─── 메인 화면 ────────────────────────────────────────────────────────────────
 
 export default function NewsScreen() {
@@ -561,6 +603,12 @@ export default function NewsScreen() {
   const [stocks, setStocks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  // 시간대별 조회 (Option 2)
+  const [hourlyTimes, setHourlyTimes] = useState([]);
+  const [hourlyByTime, setHourlyByTime] = useState({});
+  const [selectedTime, setSelectedTime] = useState(null);
+  const [hourlyLoading, setHourlyLoading] = useState(false);
 
   // 활성 날짜 초기 로드
   useEffect(() => {
@@ -574,21 +622,41 @@ export default function NewsScreen() {
     })();
   }, []);
 
-  // 날짜 변경 시 데이터 로드
+  // 날짜 변경 시 데이터 로드 (daily + hourly)
   const loadData = useCallback(async (date) => {
     setLoading(true);
+    setHourlyLoading(true);
     try {
+      // Daily 데이터
       const [metaRes, stocksRes] = await Promise.all([
         fetchSp500MetaByDate(date),
         fetchSp500ActionableByDate(date),
       ]);
       setMeta(metaRes.data);
       setStocks(stocksRes.data || []);
+
+      // Hourly 데이터
+      const hourlyRes = await fetchSp500HourlyByDate(date);
+      setHourlyTimes(hourlyRes.times || []);
+      setHourlyByTime(hourlyRes.by_time || {});
+
+      // 가장 최근 시간 자동 선택
+      const times = hourlyRes.times || [];
+      if (times.length > 0) {
+        const latestTime = times[times.length - 1];
+        setSelectedTime(latestTime);
+      } else {
+        setSelectedTime(null);
+      }
     } catch {
       setMeta(null);
       setStocks([]);
+      setHourlyTimes([]);
+      setHourlyByTime({});
+      setSelectedTime(null);
     } finally {
       setLoading(false);
+      setHourlyLoading(false);
     }
   }, []);
 
@@ -626,11 +694,21 @@ export default function NewsScreen() {
           onDateSelect={setSelectedDate}
         />
 
+        {/* 시간대 탭 (Option 2: 수평 스크롤) */}
+        {hourlyTimes.length > 0 && (
+          <HourlyTimeTabs
+            times={hourlyTimes}
+            selectedTime={selectedTime}
+            onSelectTime={setSelectedTime}
+            loading={hourlyLoading}
+          />
+        )}
+
         {/* 요약 카드 */}
         <MetaSummaryCard meta={meta} />
 
         {/* 종목 리스트 섹션 */}
-        {loading ? (
+        {loading || hourlyLoading ? (
           <>
             <View style={styles.sectionHeaderRow}>
               <View style={[styles.skeletonLine, { width: 120, height: 14, marginTop: 0 }]} />
@@ -641,64 +719,74 @@ export default function NewsScreen() {
               ))}
             </View>
           </>
-        ) : stocks.length === 0 ? (
-          <View style={styles.emptyBox}>
-            <Text style={styles.emptyIcon}>📊</Text>
-            <Text style={styles.emptyTitle}>
-              {selectedDate}에 분석된 종목이 없어요
-            </Text>
-            <Text style={styles.emptyDesc}>
-              달력에서 점이 표시된 날짜를 선택해 보세요{'\n'}
-              매일 새벽 자동으로 분석이 실행돼요
-            </Text>
-          </View>
-        ) : (
-          <>
-            {/* 낙관 섹션 */}
-            {stocks.filter(s => s.direction === 'bullish').length > 0 && (
-              <>
-                <SectionHeader 
-                  title="📈 낙관 종목" 
-                  count={stocks.filter(s => s.direction === 'bullish').length} 
-                  subtitle="매수 타이밍을 노려보세요"
-                />
-                <View style={styles.listCard}>
-                  {stocks.filter(s => s.direction === 'bullish').map((item, idx) => (
-                    <StockRow
-                      key={item.ticker}
-                      item={item}
-                      rank={idx + 1}
-                      isLast={idx === stocks.filter(s => s.direction === 'bullish').length - 1}
-                      selectedDate={selectedDate}
-                    />
-                  ))}
-                </View>
-              </>
-            )}
+        ) : (() => {
+          // 시간 선택이 있으면 hourly 데이터 사용, 없으면 daily 데이터 사용
+          const displayStocks = selectedTime && hourlyByTime[selectedTime]
+            ? hourlyByTime[selectedTime]
+            : stocks;
 
-            {/* 비관 섹션 */}
-            {stocks.filter(s => s.direction === 'bearish').length > 0 && (
-              <>
-                <SectionHeader 
-                  title="📉 비관 종목" 
-                  count={stocks.filter(s => s.direction === 'bearish').length} 
-                  subtitle="매도 또는 보류가 필요해요"
-                />
-                <View style={[styles.listCard, { marginTop: 8 }]}>
-                  {stocks.filter(s => s.direction === 'bearish').map((item, idx) => (
-                    <StockRow
-                      key={item.ticker}
-                      item={item}
-                      rank={idx + 1}
-                      isLast={idx === stocks.filter(s => s.direction === 'bearish').length - 1}
-                      selectedDate={selectedDate}
-                    />
-                  ))}
-                </View>
-              </>
-            )}
-          </>
-        )}
+          return displayStocks.length === 0 ? (
+            <View style={styles.emptyBox}>
+              <Text style={styles.emptyIcon}>📊</Text>
+              <Text style={styles.emptyTitle}>
+                {selectedTime
+                  ? `${selectedDate} ${selectedTime}에 분석된 종목이 없어요`
+                  : `${selectedDate}에 분석된 종목이 없어요`
+                }
+              </Text>
+              <Text style={styles.emptyDesc}>
+                달력에서 점이 표시된 날짜를 선택해 보세요{'\n'}
+                매시간 정각에 자동으로 분석이 실행돼요
+              </Text>
+            </View>
+          ) : (
+            <>
+              {/* 낙관 섹션 */}
+              {displayStocks.filter(s => s.direction === 'bullish').length > 0 && (
+                <>
+                  <SectionHeader
+                    title="📈 낙관 종목"
+                    count={displayStocks.filter(s => s.direction === 'bullish').length}
+                    subtitle="매수 타이밍을 노려보세요"
+                  />
+                  <View style={styles.listCard}>
+                    {displayStocks.filter(s => s.direction === 'bullish').map((item, idx) => (
+                      <StockRow
+                        key={item.ticker}
+                        item={item}
+                        rank={idx + 1}
+                        isLast={idx === displayStocks.filter(s => s.direction === 'bullish').length - 1}
+                        selectedDate={selectedDate}
+                      />
+                    ))}
+                  </View>
+                </>
+              )}
+
+              {/* 비관 섹션 */}
+              {displayStocks.filter(s => s.direction === 'bearish').length > 0 && (
+                <>
+                  <SectionHeader
+                    title="📉 비관 종목"
+                    count={displayStocks.filter(s => s.direction === 'bearish').length}
+                    subtitle="매도 또는 보류가 필요해요"
+                  />
+                  <View style={[styles.listCard, { marginTop: 8 }]}>
+                    {displayStocks.filter(s => s.direction === 'bearish').map((item, idx) => (
+                      <StockRow
+                        key={item.ticker}
+                        item={item}
+                        rank={idx + 1}
+                        isLast={idx === displayStocks.filter(s => s.direction === 'bearish').length - 1}
+                        selectedDate={selectedDate}
+                      />
+                    ))}
+                  </View>
+                </>
+              )}
+            </>
+          );
+        })()}
 
         <View style={{ height: 32 }} />
       </ScrollView>
@@ -1010,5 +1098,37 @@ const styles = StyleSheet.create({
   chartRow: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: tdsDark.border,
+  },
+});
+
+// ─── 시간대 탭 스타일 ──────────────────────────────────────────────────────────
+
+const hourlyTabStyles = StyleSheet.create({
+  container: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  scrollContent: {
+    paddingHorizontal: 0,
+    gap: 8,
+  },
+  tab: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: tdsDark.bgSecondary,
+    marginHorizontal: 4,
+  },
+  tabActive: {
+    backgroundColor: tdsColors.blue500,
+  },
+  tabText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: tdsDark.textSecondary,
+  },
+  tabTextActive: {
+    color: '#fff',
   },
 });
