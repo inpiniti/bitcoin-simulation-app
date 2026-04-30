@@ -489,7 +489,7 @@ function StockRow({ item, rank, isLast, selectedDate }) {
 
           {/* 소문 이유 */}
           {item.rumors_signal && item.rumors_reason && (
-            <Text style={styles.rumorsReasonText} numberOfLines={1}>
+            <Text style={styles.rumorsReasonText}>
               💭 소문 {item.rumors_signal} · {item.rumors_reason}
             </Text>
           )}
