@@ -19,7 +19,10 @@ import {
   RefreshControl,
   TouchableOpacity,
   Image,
+  Dimensions,
 } from 'react-native';
+
+const SCREEN_WIDTH = Dimensions.get('window').width;
 import { Ionicons } from '@expo/vector-icons';
 import { tdsDark, tdsColors } from '../../constants/tdsColors';
 import { MiniSparkline } from '../../components/tds/MiniSparkline';
@@ -419,16 +422,38 @@ function StockRow({ item, rank, isLast, selectedDate }) {
 
   const consensusCount = isBullish ? signalCount : bearishCount;
 
-  // 모델 신호 존재 여부 (소문 포함)
+  // 모델 신호 존재 여부
   const hasSignals = item.xgb_prob != null || item.rl_signal != null ||
-    item.timesfm_signal != null || item.chronos_signal != null || item.moirai_signal != null ||
-    item.rumors_signal != null;
+    item.timesfm_signal != null || item.chronos_signal != null || item.moirai_signal != null;
+
+  // 그림2 기준 — 1줄 compact 시그널 items
+  const signalItems = [];
+  if (item.xgb_prob != null) {
+    const up = item.xgb_prob > 0.55;
+    const down = item.xgb_prob < 0.45;
+    signalItems.push({ key: 'xgb', up, down, label: 'xgb' });
+  }
+  if (item.rl_signal != null) {
+    const up = item.rl_signal === 'BUY';
+    const down = item.rl_signal === 'SELL';
+    signalItems.push({ key: 'rl', up, down, label: 'rl' });
+  }
+  if (item.timesfm_signal != null) {
+    const up = item.timesfm_signal === 'up';
+    signalItems.push({ key: 'times', up, down: !up, label: 'times' });
+  }
+  if (item.chronos_signal != null) {
+    const up = item.chronos_signal === 'up';
+    signalItems.push({ key: 'chrono', up, down: !up, label: 'chrono' });
+  }
+  if (item.moirai_signal != null) {
+    const up = item.moirai_signal === 'up';
+    signalItems.push({ key: 'moirai', up, down: !up, label: 'moirai' });
+  }
 
   return (
     <>
-      <View
-        style={[styles.stockRow, !isLast && styles.stockRowBorder]}
-      >
+      <View style={styles.stockRow}>
         {/* 좌: 순위 아바타 */}
         <View style={styles.rankAvatar}>
           <Text style={styles.rankText}>{rank}</Text>
@@ -436,83 +461,68 @@ function StockRow({ item, rank, isLast, selectedDate }) {
 
         {/* 중: 종목 정보 */}
         <View style={styles.stockBody}>
-        {/* 티커 + 섹터 + 동의 수 */}
-        <View style={styles.stockTopRow}>
-          <Text style={styles.stockTicker}>{item.ticker}</Text>
-          <View style={styles.sectorChip}>
-            <Text style={styles.sectorText} numberOfLines={1}>{item.sector}</Text>
+          {/* 티커 + 섹터 + 동의 수 */}
+          <View style={styles.stockTopRow}>
+            <Text style={styles.stockTicker}>{item.ticker}</Text>
+            <View style={styles.sectorChip}>
+              <Text style={styles.sectorText} numberOfLines={1}>{item.sector}</Text>
+            </View>
+            {hasSignals && consensusCount >= 3 && (
+              <View style={[styles.consensusChip, !isBullish && { backgroundColor: `${tdsColors.blue500}12` }]}>
+                <Text style={[styles.consensusText, !isBullish && { color: tdsColors.blue500 }]}>
+                  동의 {consensusCount}/5
+                </Text>
+              </View>
+            )}
           </View>
-          {hasSignals && consensusCount >= 3 && (
-            <View style={[styles.consensusChip, !isBullish && { backgroundColor: `${tdsColors.blue500}12` }]}>
-              <Text style={[styles.consensusText, !isBullish && { color: tdsColors.blue500 }]}>
-                모델 동의 {consensusCount}/5
-              </Text>
+
+          {/* reason */}
+          <Text style={styles.reasonText} numberOfLines={2}>
+            {item.reason || '분석 근거 없음'}
+          </Text>
+
+          {/* 그림2: 모델 시그널 1줄 compact — ▲/▼ xgb · ▲/▼ rl · ▲/▼ times ... */}
+          {signalItems.length > 0 && (
+            <View style={styles.compactSignalRow}>
+              {signalItems.map((s, i) => (
+                <Text
+                  key={s.key}
+                  style={[
+                    styles.compactSignalItem,
+                    { color: s.up ? tdsColors.red500 : s.down ? tdsDark.priceDown : tdsDark.textTertiary },
+                    i > 0 && { marginLeft: 8 },
+                  ]}
+                >
+                  {s.up ? '▲' : s.down ? '▼' : '–'} {s.label}
+                </Text>
+              ))}
             </View>
           )}
         </View>
 
-        {/* reason — 항상 표시 (가장 중요한 정보) */}
-        <Text style={styles.reasonText} numberOfLines={3}>
-          {item.reason || '분석 근거 없음'}
-        </Text>
-
-        {/* 모델 신호 뱃지 행 — 원래 형태로 복원 */}
-        {hasSignals && (
-          <View style={styles.signalRow}>
-            <SignalBadge label="XGB" value={item.xgb_prob} type="xgb" />
-            <SignalBadge label="RL" value={item.rl_signal} type="rl" />
-            <SignalBadge
-              label="TimesFM"
-              value={item.timesfm_signal}
-              type="timesfm"
-              iconUrl="https://cdn-avatars.huggingface.co/v1/production/uploads/5dd96eb166059660ed1ee413/WtA3YYitedOr9n02eHfJe.png"
-            />
-            <SignalBadge
-              label="Chronos"
-              value={item.chronos_signal}
-              type="chronos"
-              iconUrl="https://cdn-avatars.huggingface.co/v1/production/uploads/66f19ed428ae41c20c470792/8y7msN6A6W82LdQhQd85a.png"
-            />
-            <SignalBadge
-              label="Moirai"
-              value={item.moirai_signal}
-              type="moirai"
-              iconUrl="https://cdn-avatars.huggingface.co/v1/production/uploads/1602756670970-noauth.jpeg"
-            />
-            {item.rumors_signal && (
-              <SignalBadge
-                label={item.rumors_signal}
-                value={item.rumors_confidence}
-                type="rumors"
-              />
-            )}
-          </View>
-        )}
+        {/* 우: 신뢰도 % */}
+        <View style={styles.rightBlock}>
+          <Text style={[styles.confidencePct, { color: barColor }]}>{confidencePct}%</Text>
+          <Text style={styles.confidenceLabel}>신뢰도</Text>
+        </View>
       </View>
 
-      {/* 우: 신뢰도 % */}
-      <View style={styles.rightBlock}>
-        <Text style={[styles.confidencePct, { color: barColor }]}>{confidencePct}%</Text>
-        <Text style={styles.confidenceLabel}>신뢰도</Text>
-      </View>
-    </View>
-
-    {/* 7일 차트 — 항상 표시 */}
-    {!isLast && (
-      <View style={[styles.chartRow, isWithinWeek && styles.chartRowCompact]}>
+      {/* 차트 — 좌우 여백 없이 전체폭, 구분선은 차트 아래 */}
+      <View style={styles.chartRow}>
         {weeklyLoading ? (
-          <ActivityIndicator size="small" color={tdsColors.blue500} />
+          <ActivityIndicator size="small" color={tdsDark.textTertiary} />
         ) : weeklyData && weeklyData.length > 0 ? (
           <MiniSparkline
             data={weeklyData}
             tradeDate={selectedDate}
             prediction={isBullish ? 'up' : 'down'}
-            width={260}
-            height={isWithinWeek ? 50 : 60}
+            width={SCREEN_WIDTH}
+            height={60}
           />
-        ) : null}
+        ) : (
+          <View style={{ height: 60 }} />
+        )}
       </View>
-    )}
     </>
   );
 }
@@ -918,11 +928,15 @@ const styles = StyleSheet.create({
   },
   barFill: { height: 3, borderRadius: 2 },
 
-  // ── 모델 신호 뱃지 행 ──
-  signalRow: {
+  // ── 그림2 기준: 모델 시그널 1줄 compact ──
+  compactSignalRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 5,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  compactSignalItem: {
+    fontSize: 11,
+    fontWeight: '700',
   },
 
   // ── 우측 신뢰도 ──
@@ -971,15 +985,9 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 
-  // ── 차트 행 ──
+  // ── 차트 행 — 좌우 여백 없음, 구분선은 차트 아래 ──
   chartRow: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: tdsDark.border,
-    alignItems: 'center',
-  },
-  chartRowCompact: {
-    paddingVertical: 6,
   },
 });
