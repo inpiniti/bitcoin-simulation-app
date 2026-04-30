@@ -22,11 +22,14 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { tdsDark, tdsColors } from '../../constants/tdsColors';
+import { MiniSparkline } from '../../components/tds/MiniSparkline';
 import {
   fetchSp500ActiveDates,
   fetchSp500MetaByDate,
   fetchSp500ActionableByDate,
 } from '../../lib/sp500Api';
+import { fetchTickerWeeklyCloses } from '../../lib/priceApi';
+import { ActivityIndicator } from 'react-native';
 
 // ─── 날짜 유틸 ────────────────────────────────────────────────────────────────
 
@@ -346,7 +349,21 @@ function SkeletonRow() {
 
 // ─── 종목 행 ─────────────────────────────────────────────────────────────────
 
-function StockRow({ item, rank, isLast }) {
+function StockRow({ item, rank, isLast, selectedDate }) {
+  const [expanded, setExpanded] = useState(false);
+  const [weeklyData, setWeeklyData] = useState(null);
+  const [weeklyLoading, setWeeklyLoading] = useState(false);
+
+  // Lazy load 7일 차트 데이터 (확장 시에만)
+  useEffect(() => {
+    if (!expanded || weeklyData !== null) return;
+    setWeeklyLoading(true);
+    fetchTickerWeeklyCloses(item.ticker, selectedDate)
+      .then(setWeeklyData)
+      .catch(() => setWeeklyData([]))
+      .finally(() => setWeeklyLoading(false));
+  }, [expanded, selectedDate, item.ticker]);
+
   const confidencePct = Math.round((item.confidence ?? 0) * 100);
   const isBullish = item.direction === 'bullish';
   const barColor = isBullish
@@ -389,14 +406,20 @@ function StockRow({ item, rank, isLast }) {
     item.rumors_signal != null;
 
   return (
-    <View style={[styles.stockRow, !isLast && styles.stockRowBorder]}>
-      {/* 좌: 순위 아바타 */}
-      <View style={styles.rankAvatar}>
-        <Text style={styles.rankText}>{rank}</Text>
-      </View>
+    <>
+      {/* 기본 뷰 (항상 보임) */}
+      <TouchableOpacity
+        style={[styles.stockRow, !isLast && !expanded && styles.stockRowBorder, expanded && { borderBottomWidth: 0 }]}
+        onPress={() => setExpanded(!expanded)}
+        activeOpacity={0.7}
+      >
+        {/* 좌: 순위 아바타 */}
+        <View style={styles.rankAvatar}>
+          <Text style={styles.rankText}>{rank}</Text>
+        </View>
 
-      {/* 중: 종목 정보 */}
-      <View style={styles.stockBody}>
+        {/* 중: 종목 정보 */}
+        <View style={styles.stockBody}>
         {/* 티커 + 섹터 + 동의 수 */}
         <View style={styles.stockTopRow}>
           <Text style={styles.stockTicker}>{item.ticker}</Text>
@@ -458,12 +481,45 @@ function StockRow({ item, rank, isLast }) {
         )}
       </View>
 
-      {/* 우: 신뢰도 % */}
+      {/* 우: 신뢰도 % + 확장 아이콘 */}
       <View style={styles.rightBlock}>
         <Text style={[styles.confidencePct, { color: barColor }]}>{confidencePct}%</Text>
         <Text style={styles.confidenceLabel}>신뢰도</Text>
       </View>
-    </View>
+
+      {/* 확장 아이콘 */}
+      <View style={{ justifyContent: 'center', paddingLeft: 8 }}>
+        <Ionicons
+          name={expanded ? 'chevron-up' : 'chevron-down'}
+          size={16}
+          color={tdsDark.textTertiary}
+        />
+      </View>
+    </TouchableOpacity>
+
+    {/* 확장 뷰 — 7일 차트 */}
+    {expanded && (
+      <View style={[styles.stockRow, styles.stockRowExpanded, !isLast && styles.stockRowBorder]}>
+        <View style={{ flex: 1, paddingHorizontal: 8, alignItems: 'center' }}>
+          {weeklyLoading ? (
+            <ActivityIndicator size="small" color={tdsColors.blue500} style={{ paddingVertical: 16 }} />
+          ) : weeklyData && weeklyData.length > 0 ? (
+            <MiniSparkline
+              data={weeklyData}
+              tradeDate={selectedDate}
+              prediction={isBullish ? 'up' : 'down'}
+              width={240}
+              height={60}
+            />
+          ) : (
+            <Text style={{ fontSize: 12, color: tdsDark.textTertiary, paddingVertical: 12 }}>
+              차트 데이터 없음
+            </Text>
+          )}
+        </View>
+      </View>
+    )}
+    </>
   );
 }
 
@@ -596,6 +652,7 @@ export default function NewsScreen() {
                       item={item}
                       rank={idx + 1}
                       isLast={idx === stocks.filter(s => s.direction === 'bullish').length - 1}
+                      selectedDate={selectedDate}
                     />
                   ))}
                 </View>
@@ -617,6 +674,7 @@ export default function NewsScreen() {
                       item={item}
                       rank={idx + 1}
                       isLast={idx === stocks.filter(s => s.direction === 'bearish').length - 1}
+                      selectedDate={selectedDate}
                     />
                   ))}
                 </View>
