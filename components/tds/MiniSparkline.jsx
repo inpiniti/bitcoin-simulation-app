@@ -1,98 +1,81 @@
 import React, { useMemo } from 'react';
 import { View } from 'react-native';
-import Svg, { Path, Line, Text as SvgText } from 'react-native-svg';
+import Svg, { Rect, Line, Text as SvgText } from 'react-native-svg';
 import { tdsDark, tdsColors } from '../../constants/tdsColors';
 
 export function MiniSparkline({
-  data,           // [{ dateStr, close }, ...]
+  data,           // [{ dateStr, open, high, low, close }, ...]
   tradeDate,      // 분석 날짜 (YYYY-MM-DD)
   prediction,     // "up" | "down"
   width = 260,
   height = 60,
 }) {
-  const paths = useMemo(() => {
-    if (!data || data.length < 2) return null;
+  const { candles, tradeX, labelY } = useMemo(() => {
+    if (!data || data.length < 1) return {};
 
-    const closes = data.map((d) => d.close);
-    const minClose = Math.min(...closes);
-    const maxClose = Math.max(...closes);
-    const range = maxClose - minClose || 1;
+    const highs = data.map((d) => d.high ?? d.close);
+    const lows = data.map((d) => d.low ?? d.close);
+    const maxP = Math.max(...highs);
+    const minP = Math.min(...lows);
+    const range = maxP - minP || 1;
 
-    const padX = 0;
+    const padX = 6;
     const padTop = 4;
-    const padBottom = 14; // 레이블 공간
+    const padBottom = 14;
     const w = width - padX * 2;
     const h = height - padTop - padBottom;
 
-    const pts = data.map((item, i) => ({
-      x: padX + (i / (data.length - 1)) * w,
-      y: padTop + (1 - (item.close - minClose) / range) * h,
-      dateStr: item.dateStr,
-    }));
+    const toY = (price) => padTop + (1 - (price - minP) / range) * h;
 
-    // tradeDate 기준 분기
-    const splitIdx = pts.findIndex((p) => p.dateStr >= tradeDate);
-    const hasSplit = splitIdx > 0 && splitIdx < pts.length;
+    const n = data.length;
+    const spacing = n > 1 ? w / (n - 1) : w;
+    const candleW = Math.max(2, spacing * 0.55);
 
-    const beforePts = hasSplit ? pts.slice(0, splitIdx + 1) : pts;
-    const afterPts = hasSplit ? pts.slice(splitIdx) : [];
+    const tradeIdx = data.findIndex((d) => d.dateStr >= tradeDate);
 
-    // cubic bezier 부드러운 곡선
-    function cubicPath(points) {
-      if (points.length < 2) return '';
-      let d = `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
-      for (let i = 1; i < points.length; i++) {
-        const dx = (points[i].x - points[i - 1].x) * 0.4;
-        d += ` C ${(points[i - 1].x + dx).toFixed(1)} ${points[i - 1].y.toFixed(1)},`;
-        d += ` ${(points[i].x - dx).toFixed(1)} ${points[i].y.toFixed(1)},`;
-        d += ` ${points[i].x.toFixed(1)} ${points[i].y.toFixed(1)}`;
+    const built = data.map((d, i) => {
+      const x = padX + (n > 1 ? (i / (n - 1)) * w : w / 2);
+      const openY = toY(d.open ?? d.close);
+      const closeY = toY(d.close);
+      const highY = toY(d.high ?? Math.max(d.open ?? d.close, d.close));
+      const lowY = toY(d.low ?? Math.min(d.open ?? d.close, d.close));
+
+      const isAfterTrade = tradeIdx >= 0 && i >= tradeIdx;
+      const isCandleUp = d.close >= (d.open ?? d.close);
+
+      let color;
+      if (!isAfterTrade) {
+        color = tdsDark.textTertiary;
+      } else {
+        color = isCandleUp ? tdsColors.red500 : tdsDark.priceDown;
       }
-      return d;
-    }
 
-    const tradeX = hasSplit ? pts[splitIdx].x : null;
-    const labelY = height - 3;
+      const bodyTop = Math.min(openY, closeY);
+      const bodyH = Math.max(1, Math.abs(openY - closeY));
+
+      return { x, highY, lowY, bodyTop, bodyH, color, candleW };
+    });
+
+    const tx = tradeIdx >= 0 ? built[tradeIdx]?.x : null;
 
     return {
-      before: cubicPath(beforePts),
-      after: cubicPath(afterPts),
-      tradeX,
-      labelY,
+      candles: built,
+      tradeX: tx,
+      labelY: height - 3,
     };
-  }, [data, tradeDate, width, height]);
+  }, [data, tradeDate, prediction, width, height]);
 
-  if (!paths) return null;
-
-  const afterColor = prediction === 'up' ? tdsColors.red500 : tdsDark.priceDown;
+  if (!candles || candles.length === 0) return null;
 
   return (
-    <View style={{ width, height, overflow: 'hidden' }}>
+    <View style={{ width, height }}>
       <Svg width={width} height={height}>
-        {/* 분석일 이전 회색 라인 */}
-        {paths.before ? (
-          <Path
-            d={paths.before}
-            stroke={tdsDark.textTertiary}
-            strokeWidth={1.5}
-            fill="none"
-            strokeOpacity={0.6}
-          />
-        ) : null}
-        {/* 분석일 이후 예측색 라인 */}
-        {paths.after ? (
-          <Path
-            d={paths.after}
-            stroke={afterColor}
-            strokeWidth={2}
-            fill="none"
-          />
-        ) : null}
         {/* 분석일 수직 점선 */}
-        {paths.tradeX != null ? (
+        {tradeX != null ? (
           <Line
-            x1={paths.tradeX}
+            x1={tradeX}
             y1={4}
-            x2={paths.tradeX}
+            x2={tradeX}
             y2={height - 14}
             stroke={tdsDark.textTertiary}
             strokeWidth={1}
@@ -100,11 +83,37 @@ export function MiniSparkline({
             strokeOpacity={0.4}
           />
         ) : null}
+
+        {/* 캔들스틱 */}
+        {candles.map((c, i) => (
+          <React.Fragment key={i}>
+            {/* 심지 (고가~저가) */}
+            <Line
+              x1={c.x}
+              y1={c.highY}
+              x2={c.x}
+              y2={c.lowY}
+              stroke={c.color}
+              strokeWidth={1}
+              strokeOpacity={0.7}
+            />
+            {/* 몸통 (시가~종가) */}
+            <Rect
+              x={c.x - c.candleW / 2}
+              y={c.bodyTop}
+              width={c.candleW}
+              height={c.bodyH}
+              fill={c.color}
+              opacity={0.85}
+            />
+          </React.Fragment>
+        ))}
+
         {/* 레이블: 예측시점 */}
-        {paths.tradeX != null ? (
+        {tradeX != null ? (
           <SvgText
-            x={paths.tradeX}
-            y={paths.labelY}
+            x={tradeX}
+            y={labelY}
             textAnchor="middle"
             fontSize={9}
             fill={tdsDark.textTertiary}
@@ -113,10 +122,11 @@ export function MiniSparkline({
             예측시점
           </SvgText>
         ) : null}
+
         {/* 레이블: 현재 */}
         <SvgText
-          x={width - 2}
-          y={paths.labelY}
+          x={width - 4}
+          y={labelY}
           textAnchor="end"
           fontSize={9}
           fill={tdsDark.textTertiary}
@@ -128,4 +138,3 @@ export function MiniSparkline({
     </View>
   );
 }
-
