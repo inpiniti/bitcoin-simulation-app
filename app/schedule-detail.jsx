@@ -21,6 +21,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { tdsDark, tdsColors } from '../constants/tdsColors';
 import { Badge } from '../components/tds/Badge';
 import { SegmentControl } from '../components/tds/SegmentControl';
+import { MiniSparkline } from '../components/tds/MiniSparkline';
 import {
   fetchSettings,
   updateSetting,
@@ -30,7 +31,7 @@ import {
   fetchTopTickersLog,
   backfillTimesFM,
 } from '../lib/tradingApi';
-import { fetchAllTickerCloses, fetchGroupIndexByDate, getIndexSymbol } from '../lib/priceApi';
+import { fetchAllTickerCloses, fetchGroupIndexByDate, getIndexSymbol, fetchTickerWeeklyCloses } from '../lib/priceApi';
 import { fetchIndexPrediction } from '../lib/tradingApi';
 import {
   sampleSettings,
@@ -338,6 +339,184 @@ function StatChip({ label, value, color, bold }) {
         {value}
       </Text>
     </View>
+  );
+}
+
+// ─── Expandable TickerRow ────────────────────────────────────────────────────
+
+function TickerRow({ ticker: t, index: i, priceInfo, pricesLoading, tradeDate, threshold }) {
+  const [expanded, setExpanded] = useState(false);
+  const [weeklyData, setWeeklyData] = useState(null);
+  const [weeklyLoading, setWeeklyLoading] = useState(false);
+
+  // Lazy load 7일 차트 데이터 (확장 시에만)
+  useEffect(() => {
+    if (!expanded || weeklyData !== null) return;
+    setWeeklyLoading(true);
+    fetchTickerWeeklyCloses(t.ticker, tradeDate)
+      .then(setWeeklyData)
+      .catch(() => setWeeklyData([]))
+      .finally(() => setWeeklyLoading(false));
+  }, [expanded, tradeDate, t.ticker]);
+
+  const aboveThreshold = t.buy_prob >= threshold;
+  const probPct = (t.buy_prob * 100).toFixed(1);
+  const tradeClose = priceInfo?.tradeClose ?? null;
+  const nextClose = priceInfo?.nextClose ?? null;
+  const changePct = tradeClose && nextClose
+    ? ((nextClose - tradeClose) / tradeClose) * 100
+    : null;
+  const isUp = changePct !== null && changePct > 0;
+  const isDown = changePct !== null && changePct < 0;
+
+  // 신호 아이콘 (기본 뷰에 표시할 간단한 마커)
+  const getSignalIcon = () => {
+    const icons = [];
+    if (t.timesfm_signal === 'up') icons.push('▲');
+    if (t.timesfm_signal === 'down') icons.push('▼');
+    if (t.rl_signal === 'BUY') icons.push('↑');
+    if (t.rl_signal === 'SELL') icons.push('↓');
+    return icons.length > 0 ? icons.slice(0, 2).join(' ') : '';
+  };
+
+  return (
+    <>
+      {/* 기본 뷰 (항상 보임, 컴팩트) */}
+      <TouchableOpacity
+        style={[styles.tickerRow, expanded && styles.tickerRowExpanded]}
+        onPress={() => setExpanded(!expanded)}
+        activeOpacity={0.7}
+      >
+        {/* 순위 */}
+        <View style={styles.tickerRank}>
+          <Text style={styles.tickerRankNum}>{t.rank ?? i + 1}</Text>
+        </View>
+
+        {/* 종목 정보 */}
+        <View style={styles.tickerInfo}>
+          {/* 1줄: 심볼 + 이름 + 확률 */}
+          <View style={styles.tickerTopRow}>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Text style={styles.tickerSymbol}>{t.ticker}</Text>
+                {getSignalIcon() && (
+                  <Text style={styles.tickerSignalIcon}>{getSignalIcon()}</Text>
+                )}
+              </View>
+              <Text style={styles.tickerName} numberOfLines={1}>{t.name || '-'}</Text>
+            </View>
+
+            <View style={styles.tickerRight}>
+              <Text style={[styles.tickerProb, aboveThreshold && { color: tdsColors.red500 }]}>
+                {probPct}%
+              </Text>
+              {aboveThreshold && (
+                <Ionicons name="checkmark-circle" size={14} color={tdsColors.green400} />
+              )}
+            </View>
+          </View>
+
+          {/* 2줄: 가격 + 변화율 */}
+          <View style={styles.tickerPriceRow}>
+            {pricesLoading && !priceInfo ? (
+              <Text style={styles.tickerPriceLoading}>조회 중...</Text>
+            ) : (
+              <>
+                <Text style={styles.tickerPriceValue}>
+                  {tradeClose != null ? `$${tradeClose.toFixed(2)}` : '-'}
+                </Text>
+                <Ionicons
+                  name="arrow-forward"
+                  size={9}
+                  color={tdsDark.textTertiary}
+                  style={{ marginHorizontal: 2 }}
+                />
+                <Text style={[
+                  styles.tickerPriceValue,
+                  nextClose == null && { color: tdsDark.textTertiary },
+                ]}>
+                  {nextClose != null ? `$${nextClose.toFixed(2)}` : '-'}
+                </Text>
+                {changePct !== null && (
+                  <View style={[
+                    styles.tickerChangeBadge,
+                    isUp && { backgroundColor: `${tdsColors.red500}20` },
+                    isDown && { backgroundColor: `${tdsColors.blue500}20` },
+                  ]}>
+                    <Text style={[
+                      styles.tickerChangeText,
+                      isUp && { color: tdsColors.red500 },
+                      isDown && { color: tdsColors.blue500 },
+                    ]}>
+                      {isUp ? '+' : ''}{changePct.toFixed(1)}%
+                    </Text>
+                  </View>
+                )}
+              </>
+            )}
+          </View>
+        </View>
+
+        {/* 확장 아이콘 */}
+        <Ionicons
+          name={expanded ? 'chevron-up' : 'chevron-down'}
+          size={16}
+          color={tdsDark.textTertiary}
+          style={{ marginLeft: 4 }}
+        />
+      </TouchableOpacity>
+
+      {/* 확장 뷰 */}
+      {expanded && (
+        <View style={styles.tickerExpandedContent}>
+          {/* 신호 뱃지 모음 */}
+          <View style={styles.tickerSignalBadges}>
+            {t.timesfm_signal === 'up' && (
+              <View style={styles.timesfmUp}>
+                <Text style={styles.timesfmUpText}>▲ TimesFM</Text>
+              </View>
+            )}
+            {t.timesfm_signal === 'down' && (
+              <View style={styles.timesfmDown}>
+                <Text style={styles.timesfmDownText}>▼ TimesFM</Text>
+              </View>
+            )}
+            {t.rl_signal === 'BUY' && (
+              <View style={styles.rlBuy}>
+                <Text style={styles.rlBuyText}>▲ RL</Text>
+              </View>
+            )}
+            {t.rl_signal === 'SELL' && (
+              <View style={styles.rlSell}>
+                <Text style={styles.rlSellText}>▼ RL</Text>
+              </View>
+            )}
+            {t.rl_signal === 'HOLD' && (
+              <View style={styles.rlHold}>
+                <Text style={styles.rlHoldText}>● RL</Text>
+              </View>
+            )}
+          </View>
+
+          {/* 차트 */}
+          <View style={styles.tickerChartSection}>
+            {weeklyLoading ? (
+              <ActivityIndicator size="small" color={tdsColors.blue500} style={{ paddingVertical: 16 }} />
+            ) : weeklyData && weeklyData.length > 0 ? (
+              <MiniSparkline
+                data={weeklyData}
+                tradeDate={tradeDate}
+                prediction={t.timesfm_signal === 'up' ? 'up' : 'down'}
+                width={240}
+                height={60}
+              />
+            ) : (
+              <Text style={styles.tickerChartEmpty}>차트 데이터 없음</Text>
+            )}
+          </View>
+        </View>
+      )}
+    </>
   );
 }
 
@@ -676,111 +855,17 @@ function TickerCard({ data, prices, pricesLoading, marketIndex, indexPrediction,
       </View>
 
       {/* ── 종목 목록 (full-width) ── */}
-      {tickers.map((t, i) => {
-        const aboveThreshold = t.buy_prob >= threshold;
-        const probPct = (t.buy_prob * 100).toFixed(1);
-        const priceInfo = prices[t.ticker];
-        const tradeClose = priceInfo?.tradeClose ?? null;
-        const nextClose = priceInfo?.nextClose ?? null;
-        const changePct = tradeClose && nextClose
-          ? ((nextClose - tradeClose) / tradeClose) * 100
-          : null;
-        const isUp = changePct !== null && changePct > 0;
-        const isDown = changePct !== null && changePct < 0;
-
-        return (
-          <View key={t.ticker ?? i} style={styles.tickerRow}>
-            {/* 순위 */}
-            <View style={styles.tickerRank}>
-              <Text style={styles.tickerRankNum}>{t.rank ?? i + 1}</Text>
-            </View>
-
-            {/* 종목명 + 확률 */}
-            <View style={styles.tickerInfo}>
-              <View style={styles.tickerTopRow}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={styles.tickerSymbol}>{t.ticker}</Text>
-                  {/* TimesFM 방향 신호 뱃지 */}
-                  {t.timesfm_signal === 'up' && (
-                    <View style={styles.timesfmUp}>
-                      <Text style={styles.timesfmUpText}>▲ TimesFM</Text>
-                    </View>
-                  )}
-                  {t.timesfm_signal === 'down' && (
-                    <View style={styles.timesfmDown}>
-                      <Text style={styles.timesfmDownText}>▼ TimesFM</Text>
-                    </View>
-                  )}
-                  {t.rl_signal === 'BUY' && (
-                    <View style={styles.rlBuy}>
-                      <Text style={styles.rlBuyText}>▲ RL</Text>
-                    </View>
-                  )}
-                  {t.rl_signal === 'SELL' && (
-                    <View style={styles.rlSell}>
-                      <Text style={styles.rlSellText}>▼ RL</Text>
-                    </View>
-                  )}
-                  {t.rl_signal === 'HOLD' && (
-                    <View style={styles.rlHold}>
-                      <Text style={styles.rlHoldText}>● RL</Text>
-                    </View>
-                  )}
-                </View>
-                <View style={styles.tickerRight}>
-                  <Text style={[styles.tickerProb, aboveThreshold && { color: tdsColors.red500 }]}>
-                    {probPct}%
-                  </Text>
-                  {aboveThreshold && (
-                    <Ionicons name="checkmark-circle" size={14} color={tdsColors.green400} />
-                  )}
-                </View>
-              </View>
-              <Text style={styles.tickerName} numberOfLines={1}>{t.name || '-'}</Text>
-
-              {/* 종가 행 */}
-              <View style={styles.tickerPriceRow}>
-                {pricesLoading && !priceInfo ? (
-                  <Text style={styles.tickerPriceLoading}>조회 중...</Text>
-                ) : (
-                  <>
-                    <Text style={styles.tickerPriceValue}>
-                      {tradeClose != null ? `$${tradeClose.toFixed(2)}` : '-'}
-                    </Text>
-                    <Ionicons
-                      name="arrow-forward"
-                      size={11}
-                      color={tdsDark.textTertiary}
-                      style={{ marginHorizontal: 4 }}
-                    />
-                    <Text style={[
-                      styles.tickerPriceValue,
-                      nextClose == null && { color: tdsDark.textTertiary },
-                    ]}>
-                      {nextClose != null ? `$${nextClose.toFixed(2)}` : '-'}
-                    </Text>
-                    {changePct !== null && (
-                      <View style={[
-                        styles.tickerChangeBadge,
-                        isUp && { backgroundColor: `${tdsColors.red500}20` },
-                        isDown && { backgroundColor: `${tdsColors.blue500}20` },
-                      ]}>
-                        <Text style={[
-                          styles.tickerChangeText,
-                          isUp && { color: tdsColors.red500 },
-                          isDown && { color: tdsColors.blue500 },
-                        ]}>
-                          {isUp ? '+' : ''}{changePct.toFixed(1)}%
-                        </Text>
-                      </View>
-                    )}
-                  </>
-                )}
-              </View>
-            </View>
-          </View>
-        );
-      })}
+      {tickers.map((t, i) => (
+        <TickerRow
+          key={t.ticker ?? i}
+          ticker={t}
+          index={i}
+          priceInfo={prices[t.ticker] ?? null}
+          pricesLoading={pricesLoading}
+          tradeDate={selectedDate}
+          threshold={threshold}
+        />
+      ))}
     </View>
   );
 }
@@ -1069,6 +1154,38 @@ const styles = StyleSheet.create({
     backgroundColor: `${tdsDark.textTertiary}22`,
   },
   rlHoldText: { fontSize: 10, fontWeight: '700', color: tdsDark.textTertiary },
+
+  // TickerRow Expandable 스타일
+  tickerRowExpanded: {
+    borderBottomWidth: 0,
+  },
+  tickerSignalIcon: {
+    fontSize: 11,
+    color: tdsColors.blue500,
+    fontWeight: '600',
+  },
+  tickerSignalBadges: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingTop: 8,
+  },
+  tickerExpandedContent: {
+    backgroundColor: tdsDark.bgSecondary,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: tdsDark.border,
+  },
+  tickerChartSection: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  tickerChartEmpty: {
+    fontSize: 12,
+    color: tdsDark.textTertiary,
+    paddingVertical: 16,
+  },
 });
 
 // ─── 달력 Styles ──────────────────────────────────────────────────────────────
