@@ -36,6 +36,7 @@ export function MiniSparkline({
   }
 
   const lineColor = prediction === 'up' ? tdsColors.red500 : tdsDark.priceDown;
+  const spacing = chartData.length > 1 ? (width - 20) / (chartData.length - 1) : 0;
 
   return (
     <View style={[styles.container, { width, height }]}>
@@ -46,18 +47,17 @@ export function MiniSparkline({
         hideDataPoints={true}
         hideAxesAndRules={true}
         color={lineColor}
-        thickness={2.5}
+        thickness={2}
         curved={true}
-        isAnimated={false}
-        startFillColor={`${lineColor}10`}
-        endFillColor={`${lineColor}00`}
-        startOpacity={0.2}
+        startFillColor={lineColor}
+        endFillColor={lineColor}
+        startOpacity={0.15}
         endOpacity={0}
-        containerHeight={height}
-        initialSpacing={0}
-        endSpacing={0}
-        spacing={(width - 8) / Math.max(chartData.length - 1, 1)}
-        pointerConfig={{ pointerStripHeight: height, pointerStripColor: 'transparent', pointerConfig: { radius: 0 } }}
+        initialSpacing={10}
+        endSpacing={10}
+        spacing={spacing}
+        showVerticalLines={false}
+        verticalLinesColor="transparent"
       />
     </View>
   );

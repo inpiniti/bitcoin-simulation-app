@@ -509,7 +509,6 @@ function StockRow({ item, rank, isLast, selectedDate }) {
             prediction={isBullish ? 'up' : 'down'}
             width={260}
             height={isWithinWeek ? 50 : 60}
-            compact={isWithinWeek}
           />
         ) : null}
       </View>
