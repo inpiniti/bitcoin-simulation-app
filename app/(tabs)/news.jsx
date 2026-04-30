@@ -637,6 +637,7 @@ export default function NewsScreen() {
 
       // Hourly 데이터
       const hourlyRes = await fetchSp500HourlyByDate(date);
+      console.log('[Hourly] Date:', date, 'Times:', hourlyRes.times, 'Error:', hourlyRes.error);
       setHourlyTimes(hourlyRes.times || []);
       setHourlyByTime(hourlyRes.by_time || {});
 
