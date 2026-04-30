@@ -425,9 +425,10 @@ function StockRow({ item, rank, isLast, selectedDate }) {
     item.rumors_signal != null;
 
   return (
-    <View
-      style={[styles.stockRow, !isLast && styles.stockRowBorder]}
-    >
+    <>
+      <View
+        style={[styles.stockRow, !isLast && styles.stockRowBorder]}
+      >
         {/* 좌: 순위 아바타 */}
         <View style={styles.rankAvatar}>
           <Text style={styles.rankText}>{rank}</Text>
