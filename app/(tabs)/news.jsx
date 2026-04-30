@@ -456,45 +456,35 @@ function StockRow({ item, rank, isLast, selectedDate }) {
           {item.reason || '분석 근거 없음'}
         </Text>
 
-        {/* confidence 바 */}
-        <View style={styles.barTrack}>
-          <View
-            style={[styles.barFill, { width: `${confidencePct}%`, backgroundColor: barColor }]}
-          />
-        </View>
-
-        {/* 모델 신호 간략 표시 — 한 줄, 텍스트만 */}
+        {/* 모델 신호 뱃지 행 — 원래 형태로 복원 */}
         {hasSignals && (
-          <View style={styles.signalCompactRow}>
-            {item.xgb_prob != null && (
-              <Text style={[styles.signalCompactText, { color: item.xgb_prob >= 0.55 ? tdsColors.red500 : item.xgb_prob < 0.45 ? tdsColors.blue500 : tdsDark.textTertiary }]}>
-                {item.xgb_prob >= 0.55 ? '▲' : item.xgb_prob < 0.45 ? '▼' : '●'} xgb
-              </Text>
-            )}
-            {item.rl_signal && (
-              <Text style={[styles.signalCompactText, { color: item.rl_signal === 'BUY' ? tdsColors.red500 : item.rl_signal === 'SELL' ? tdsColors.blue500 : tdsDark.textTertiary }]}>
-                {item.rl_signal === 'BUY' ? '▲' : item.rl_signal === 'SELL' ? '▼' : '●'} rl
-              </Text>
-            )}
-            {item.timesfm_signal && (
-              <Text style={[styles.signalCompactText, { color: item.timesfm_signal === 'up' ? tdsColors.red500 : tdsColors.blue500 }]}>
-                {item.timesfm_signal === 'up' ? '▲' : '▼'} times
-              </Text>
-            )}
-            {item.chronos_signal && (
-              <Text style={[styles.signalCompactText, { color: item.chronos_signal === 'up' ? tdsColors.red500 : tdsColors.blue500 }]}>
-                {item.chronos_signal === 'up' ? '▲' : '▼'} chrono
-              </Text>
-            )}
-            {item.moirai_signal && (
-              <Text style={[styles.signalCompactText, { color: item.moirai_signal === 'up' ? tdsColors.red500 : tdsColors.blue500 }]}>
-                {item.moirai_signal === 'up' ? '▲' : '▼'} moirai
-              </Text>
-            )}
+          <View style={styles.signalRow}>
+            <SignalBadge label="XGB" value={item.xgb_prob} type="xgb" />
+            <SignalBadge label="RL" value={item.rl_signal} type="rl" />
+            <SignalBadge
+              label="TimesFM"
+              value={item.timesfm_signal}
+              type="timesfm"
+              iconUrl="https://cdn-avatars.huggingface.co/v1/production/uploads/5dd96eb166059660ed1ee413/WtA3YYitedOr9n02eHfJe.png"
+            />
+            <SignalBadge
+              label="Chronos"
+              value={item.chronos_signal}
+              type="chronos"
+              iconUrl="https://cdn-avatars.huggingface.co/v1/production/uploads/66f19ed428ae41c20c470792/8y7msN6A6W82LdQhQd85a.png"
+            />
+            <SignalBadge
+              label="Moirai"
+              value={item.moirai_signal}
+              type="moirai"
+              iconUrl="https://cdn-avatars.huggingface.co/v1/production/uploads/1602756670970-noauth.jpeg"
+            />
             {item.rumors_signal && (
-              <Text style={[styles.signalCompactText, { color: item.rumors_signal === 'BUY' ? tdsColors.red500 : tdsColors.blue500 }]}>
-                {item.rumors_signal === 'BUY' ? '▲' : '▼'} rumors
-              </Text>
+              <SignalBadge
+                label={item.rumors_signal}
+                value={item.rumors_confidence}
+                type="rumors"
+              />
             )}
           </View>
         )}
