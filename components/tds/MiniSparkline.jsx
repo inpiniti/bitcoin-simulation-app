@@ -13,8 +13,9 @@ export function MiniSparkline({
   data,           // [{ dateStr, close }, ...]
   tradeDate,      // 분석 날짜 (YYYY-MM-DD)
   prediction,     // "up" | "down"
-  width = 240,
-  height = 60,
+  width = 260,
+  height = 50,
+  compact = false, // true면 배경 없음, 여백 최소
 }) {
   const padding = { left: 8, right: 8, top: 8, bottom: 8 };
   const innerWidth = width - padding.left - padding.right;
@@ -73,7 +74,7 @@ export function MiniSparkline({
     pts.map((p) => `${p.x},${p.y}`).join(' ');
 
   return (
-    <View style={[styles.container, { width, height }]}>
+    <View style={[compact ? styles.containerCompact : styles.container, { width, height }]}>
       <Svg width={width} height={height}>
         {/* 분석 날짜 수직선 */}
         {tradePointX != null && (
@@ -158,6 +159,11 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: tdsDark.bgSecondary,
     borderRadius: 12,
+    overflow: 'hidden',
+  },
+  containerCompact: {
+    backgroundColor: 'transparent',
+    borderRadius: 0,
     overflow: 'hidden',
   },
 });

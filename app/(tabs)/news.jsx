@@ -321,6 +321,16 @@ const signalStyles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
   },
+  signalCompactRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 6,
+    flexWrap: 'wrap',
+  },
+  signalCompactText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
 });
 
 // ─── 스켈레톤 (도허티 임계 법칙) ─────────────────────────────────────────────
@@ -350,19 +360,28 @@ function SkeletonRow() {
 // ─── 종목 행 ─────────────────────────────────────────────────────────────────
 
 function StockRow({ item, rank, isLast, selectedDate }) {
-  const [expanded, setExpanded] = useState(false);
   const [weeklyData, setWeeklyData] = useState(null);
   const [weeklyLoading, setWeeklyLoading] = useState(false);
 
-  // Lazy load 7일 차트 데이터 (확장 시에만)
+  // 7일 차트 데이터 조회
   useEffect(() => {
-    if (!expanded || weeklyData !== null) return;
     setWeeklyLoading(true);
     fetchTickerWeeklyCloses(item.ticker, selectedDate)
       .then(setWeeklyData)
       .catch(() => setWeeklyData([]))
       .finally(() => setWeeklyLoading(false));
-  }, [expanded, selectedDate, item.ticker]);
+  }, [selectedDate, item.ticker]);
+
+  // 7일 경과 여부 판단
+  const isWithinWeek = weeklyData && weeklyData.length > 0
+    ? (() => {
+        const lastDate = weeklyData[weeklyData.length - 1]?.dateStr;
+        const selectedD = new Date(selectedDate);
+        const lastD = new Date(lastDate);
+        const daysElapsed = Math.floor((selectedD - lastD) / (1000 * 60 * 60 * 24));
+        return daysElapsed < 7;
+      })()
+    : true;
 
   const confidencePct = Math.round((item.confidence ?? 0) * 100);
   const isBullish = item.direction === 'bullish';
@@ -406,13 +425,9 @@ function StockRow({ item, rank, isLast, selectedDate }) {
     item.rumors_signal != null;
 
   return (
-    <>
-      {/* 기본 뷰 (항상 보임) */}
-      <TouchableOpacity
-        style={[styles.stockRow, !isLast && !expanded && styles.stockRowBorder, expanded && { borderBottomWidth: 0 }]}
-        onPress={() => setExpanded(!expanded)}
-        activeOpacity={0.7}
-      >
+    <View
+      style={[styles.stockRow, !isLast && styles.stockRowBorder]}
+    >
         {/* 좌: 순위 아바타 */}
         <View style={styles.rankAvatar}>
           <Text style={styles.rankText}>{rank}</Text>
@@ -447,76 +462,65 @@ function StockRow({ item, rank, isLast, selectedDate }) {
           />
         </View>
 
-        {/* 모델 신호 뱃지 행 — 데이터 있을 때만 */}
+        {/* 모델 신호 간략 표시 — 한 줄, 텍스트만 */}
         {hasSignals && (
-          <View style={styles.signalRow}>
-            <SignalBadge label="XGB" value={item.xgb_prob} type="xgb" />
-            <SignalBadge label="RL" value={item.rl_signal} type="rl" />
-            <SignalBadge
-              label="TimesFM"
-              value={item.timesfm_signal}
-              type="timesfm"
-              iconUrl="https://cdn-avatars.huggingface.co/v1/production/uploads/5dd96eb166059660ed1ee413/WtA3YYitedOr9n02eHfJe.png"
-            />
-            <SignalBadge
-              label="Chronos"
-              value={item.chronos_signal}
-              type="chronos"
-              iconUrl="https://cdn-avatars.huggingface.co/v1/production/uploads/66f19ed428ae41c20c470792/8y7msN6A6W82LdQhQd85a.png"
-            />
-            <SignalBadge
-              label="Moirai"
-              value={item.moirai_signal}
-              type="moirai"
-              iconUrl="https://cdn-avatars.huggingface.co/v1/production/uploads/1602756670970-noauth.jpeg"
-            />
+          <View style={styles.signalCompactRow}>
+            {item.xgb_prob != null && (
+              <Text style={[styles.signalCompactText, { color: item.xgb_prob >= 0.55 ? tdsColors.red500 : item.xgb_prob < 0.45 ? tdsColors.blue500 : tdsDark.textTertiary }]}>
+                {item.xgb_prob >= 0.55 ? '▲' : item.xgb_prob < 0.45 ? '▼' : '●'} xgb
+              </Text>
+            )}
+            {item.rl_signal && (
+              <Text style={[styles.signalCompactText, { color: item.rl_signal === 'BUY' ? tdsColors.red500 : item.rl_signal === 'SELL' ? tdsColors.blue500 : tdsDark.textTertiary }]}>
+                {item.rl_signal === 'BUY' ? '▲' : item.rl_signal === 'SELL' ? '▼' : '●'} rl
+              </Text>
+            )}
+            {item.timesfm_signal && (
+              <Text style={[styles.signalCompactText, { color: item.timesfm_signal === 'up' ? tdsColors.red500 : tdsColors.blue500 }]}>
+                {item.timesfm_signal === 'up' ? '▲' : '▼'} times
+              </Text>
+            )}
+            {item.chronos_signal && (
+              <Text style={[styles.signalCompactText, { color: item.chronos_signal === 'up' ? tdsColors.red500 : tdsColors.blue500 }]}>
+                {item.chronos_signal === 'up' ? '▲' : '▼'} chrono
+              </Text>
+            )}
+            {item.moirai_signal && (
+              <Text style={[styles.signalCompactText, { color: item.moirai_signal === 'up' ? tdsColors.red500 : tdsColors.blue500 }]}>
+                {item.moirai_signal === 'up' ? '▲' : '▼'} moirai
+              </Text>
+            )}
             {item.rumors_signal && (
-              <SignalBadge
-                label={item.rumors_signal}
-                value={item.rumors_confidence}
-                type="rumors"
-              />
+              <Text style={[styles.signalCompactText, { color: item.rumors_signal === 'BUY' ? tdsColors.red500 : tdsColors.blue500 }]}>
+                {item.rumors_signal === 'BUY' ? '▲' : '▼'} rumors
+              </Text>
             )}
           </View>
         )}
       </View>
 
-      {/* 우: 신뢰도 % + 확장 아이콘 */}
+      {/* 우: 신뢰도 % */}
       <View style={styles.rightBlock}>
         <Text style={[styles.confidencePct, { color: barColor }]}>{confidencePct}%</Text>
         <Text style={styles.confidenceLabel}>신뢰도</Text>
       </View>
+    </View>
 
-      {/* 확장 아이콘 */}
-      <View style={{ justifyContent: 'center', paddingLeft: 8 }}>
-        <Ionicons
-          name={expanded ? 'chevron-up' : 'chevron-down'}
-          size={16}
-          color={tdsDark.textTertiary}
-        />
-      </View>
-    </TouchableOpacity>
-
-    {/* 확장 뷰 — 7일 차트 */}
-    {expanded && (
-      <View style={[styles.stockRow, styles.stockRowExpanded, !isLast && styles.stockRowBorder]}>
-        <View style={{ flex: 1, paddingHorizontal: 8, alignItems: 'center' }}>
-          {weeklyLoading ? (
-            <ActivityIndicator size="small" color={tdsColors.blue500} style={{ paddingVertical: 16 }} />
-          ) : weeklyData && weeklyData.length > 0 ? (
-            <MiniSparkline
-              data={weeklyData}
-              tradeDate={selectedDate}
-              prediction={isBullish ? 'up' : 'down'}
-              width={240}
-              height={60}
-            />
-          ) : (
-            <Text style={{ fontSize: 12, color: tdsDark.textTertiary, paddingVertical: 12 }}>
-              차트 데이터 없음
-            </Text>
-          )}
-        </View>
+    {/* 7일 차트 — 항상 표시 */}
+    {!isLast && (
+      <View style={[styles.chartRow, isWithinWeek && styles.chartRowCompact]}>
+        {weeklyLoading ? (
+          <ActivityIndicator size="small" color={tdsColors.blue500} />
+        ) : weeklyData && weeklyData.length > 0 ? (
+          <MiniSparkline
+            data={weeklyData}
+            tradeDate={selectedDate}
+            prediction={isBullish ? 'up' : 'down'}
+            width={260}
+            height={isWithinWeek ? 50 : 60}
+            compact={isWithinWeek}
+          />
+        ) : null}
       </View>
     )}
     </>
@@ -975,5 +979,17 @@ const styles = StyleSheet.create({
     color: tdsDark.textSecondary,
     textAlign: 'center',
     lineHeight: 20,
+  },
+
+  // ── 차트 행 ──
+  chartRow: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: tdsDark.border,
+    alignItems: 'center',
+  },
+  chartRowCompact: {
+    paddingVertical: 6,
   },
 });
