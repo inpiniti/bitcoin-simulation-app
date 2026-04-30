@@ -692,6 +692,7 @@ function TickersTab({ settingId, settingName, tickerGroupKey, aiModelKey, rlMode
               indexPredictionLoading={indexPredictionLoading}
               onBackfill={handleBackfill}
               backfilling={backfilling}
+              selectedDate={selectedDate}
             />
           )}
         </ScrollView>
@@ -700,7 +701,7 @@ function TickersTab({ settingId, settingName, tickerGroupKey, aiModelKey, rlMode
   );
 }
 
-function TickerCard({ data, prices, pricesLoading, marketIndex, indexPrediction, indexPredictionLoading, onBackfill, backfilling }) {
+function TickerCard({ data, prices, pricesLoading, marketIndex, indexPrediction, indexPredictionLoading, onBackfill, backfilling, selectedDate }) {
   const threshold = data.buy_threshold ?? 0.6;
   const rawTickers = data.tickers ?? [];
   const tickers = typeof rawTickers === 'string' ? JSON.parse(rawTickers) : rawTickers;
