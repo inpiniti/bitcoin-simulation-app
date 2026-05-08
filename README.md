@@ -17,6 +17,7 @@ Bitcoin 자동매매 시뮬레이션 앱 (Expo Web).
 - AI 질문 (Gemini)
 - 딥러닝 스튜디오
 - 자동매매 설정
+- 포트폴리오 자산 배분 제안
 
 ## 백엔드
 - [bitcoin-ai-backend](https://huggingface.co/spaces/younginpiniti/bitcoin-ai-backend)

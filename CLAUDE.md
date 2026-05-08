@@ -20,7 +20,7 @@
 | 계좌 | `app/(tabs)/account.jsx`  | Wallet    | 보유잔고 + 예수금 |
 | 모델 | `app/(tabs)/model.jsx`    | Brain     | 예측 + 학습       |
 | 예약 | `app/(tabs)/schedule.jsx` | Clock     | 설정 + 로그       |
-| 티커 | `app/(tabs)/ticker.jsx`   | BarChart2 | 목록 + 매수       |
+| 포트폴리오 | `app/(tabs)/portfolio.jsx` | PieChart | 목록 + 제안       |
 
 ---
 
@@ -161,32 +161,24 @@ AAPL     BUY       0.82       0.18
 
 ---
 
-### 3-4. 티커 탭 (`ticker.jsx`)
+### 3-4. 포트폴리오 탭 (`portfolio.jsx`)
 
-**목적**: 관심 종목 목록 확인 및 즉시 매수
+**목적**: 투자자 데이터 기반 자산 배분 제안 및 권장 매수 수량 확인
 
-**목록 형태** (스크롤 가능):
-
-```
-[로고]  삼성전자   005930
-        오늘 +1.23%         현재가  ₩74,330
-        [매수]
-
-[로고]  카카오      035720
-        오늘 -0.55%         현재가  ₩52,100
-        [매수]
-```
+**주요 기능**:
+- **자산 배분 제안**: 총자산 입력 시 투자자들의 평균 비중을 바탕으로 종목별 권장 수량 자동 계산
+- **Tweak 패널**: 종목 수, 현금 비중, 가중치 기준(투자자 수/비중 합계) 실시간 조정
+- **뷰 모드**: '종목별 비중' (권장 수량 확인) 및 '투자자별 목록' 전환
 
 **필드**:
+- `totalAssets`: 운용 자산 (직접 입력)
+- `tickerCount`: 추천 종목 수 (5~50개 조절)
+- `cashRatio`: 현금 보유 비중 (0~50% 조절)
+- `weightMode`: 가중치 계산 방식 (투자자 수 기반 vs 비중 합계 기반)
 
-- `logo`: 종목 로고
-- `name`: 종목명
-- `ticker`: 종목코드
-- `today_rate`: 오늘 수익률 % (양수=빨강, 음수=초록)
-- `current_price`: 현재가
-- 매수 버튼: 탭 시 수량 입력 모달 → 주문 실행
-
-**API**:
+**API**: 
+- 백엔드 `/portfolio?withDetails=true` 조회
+- 데이터 부재 시 `lib/portfolioData.js` 샘플 데이터 활용
 
 - 종목 목록: Supabase `ticker_group` 또는 백엔드 `/tickers`
 - 현재가: KIS API 또는 백엔드 시세 엔드포인트
@@ -236,7 +228,7 @@ AAPL     BUY       0.82       0.18
 - `app/(tabs)/account.jsx` — 계좌 탭
 - `app/(tabs)/model.jsx` — 모델 탭
 - `app/(tabs)/schedule.jsx` — 예약 탭
-- `app/(tabs)/ticker.jsx` — 티커 탭
+- `app/(tabs)/portfolio.jsx` — 포트폴리오 탭
 - `lib/kisApi.js` — KIS 잔고/주문 API
 
 ### 수정
