@@ -90,12 +90,12 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="ticker"
+        name="portfolio"
         options={{
-          title: '티커',
+          title: '포트폴리오',
           tabBarIcon: ({ focused, size }) => (
             <Ionicons
-              name="bar-chart"
+              name="pie-chart"
               color={focused ? tdsColors.blue700 : tdsColors.grey400}
               size={size}
             />
