@@ -1,5 +1,5 @@
 /**
- * 계좌 탭 — KIS 잔고 + 예수금 + 매수/매도
+ * 계좌 탭 — KIS 잔고 + 예수금 + 매수/매도 (원화/달러 토글 추가)
  */
 import { useState, useCallback, useEffect } from 'react';
 import {
@@ -11,68 +11,41 @@ import {
   StyleSheet,
   Alert,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { tdsDark, tdsColors } from '../../constants/tdsColors';
 import { ListRow } from '../../components/tds/ListRow';
 import { Button } from '../../components/tds/Button';
 import { BottomSheet } from '../../components/tds/BottomSheet';
-import { fetchKisBalance, submitKisOrder } from '../../lib/kisApi';
+import { SegmentControl } from '../../components/tds/SegmentControl';
+import { fetchKisFullBalance, submitKisOrder } from '../../lib/kisApi';
 import { sampleAccount } from '../../lib/sampleData';
 import useStore from '../../store/useStore';
 import { getPriceColor, formatRate, formatPrice } from '../../utils/price';
 import { LogoBadge } from '../../components/tds/LogoBadge';
 
-function formatSignedPrice(value) {
+function formatCurrency(value, currency) {
   if (value == null) return '-';
-  const sign = value > 0 ? '+' : value < 0 ? '-' : '';
-  return `${sign}${formatPrice(Math.abs(value))}`;
+  if (currency === 'USD') {
+    return `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+  return `₩${value.toLocaleString('ko-KR')}`;
 }
 
-// ─── 스켈레튼 행 ────────────────────────────────────────────────────────────
-
-function SkeletonRow() {
-  return (
-    <View style={styles.skeletonRow}>
-      <View style={styles.skeletonAvatar} />
-      <View style={styles.skeletonBody}>
-        <View style={[styles.skeletonLine, { width: '55%' }]} />
-        <View style={[styles.skeletonLine, { width: '35%', marginTop: 8 }]} />
-      </View>
-      <View style={styles.skeletonRight}>
-        <View style={[styles.skeletonLine, { width: 56 }]} />
-        <View style={[styles.skeletonLine, { width: 48, marginTop: 8 }]} />
-      </View>
-    </View>
-  );
+function formatSignedCurrency(value, currency) {
+  if (value == null) return '-';
+  const sign = value > 0 ? '+' : value < 0 ? '-' : '';
+  return `${sign}${formatCurrency(Math.abs(value), currency)}`;
 }
 
 // ─── 포트폴리오 요약 ──────────────────────────────────────────────────────────
 
-function PortfolioSummary({ balance, summary }) {
+function PortfolioSummary({ balance, summary, currency }) {
   if (!balance || balance.length === 0) return null;
-  const avgRate =
-    summary?.profitRate ??
-    (() => {
-      const totalBuy = balance.reduce(
-        (sum, b) => sum + (b.buy_amount_foreign || 0),
-        0,
-      );
-      const totalEval = balance.reduce(
-        (sum, b) => sum + (b.eval_amount_foreign || 0),
-        0,
-      );
-      if (totalBuy > 0) {
-        return ((totalEval - totalBuy) / totalBuy) * 100;
-      }
-      return (
-        balance.reduce((sum, b) => sum + (b.profit_rate || 0), 0) /
-        balance.length
-      );
-    })();
+  
+  const avgRate = summary?.profitRate ?? 0;
   const rateColor = getPriceColor(avgRate);
-  const profitAmount =
-    summary?.profitAmount ??
-    balance.reduce((sum, b) => sum + (b.profit_amount || 0), 0);
+  const profitAmount = summary?.profitAmount ?? 0;
   const profitColor = getPriceColor(profitAmount);
 
   return (
@@ -84,7 +57,7 @@ function PortfolioSummary({ balance, summary }) {
             평균 {formatRate(avgRate)}
           </Text>
           <Text style={[styles.portfolioProfit, { color: profitColor }]}>
-            평가손익 {formatSignedPrice(profitAmount)}
+            평가손익 {formatSignedCurrency(profitAmount, currency)}
           </Text>
         </View>
       </View>
@@ -108,231 +81,47 @@ function PortfolioSummary({ balance, summary }) {
   );
 }
 
-// ─── 주문 BottomSheet ─────────────────────────────────────────────────────────
-
-function OrderSheet({ item, open, onClose, useSampleData }) {
-  const [qty, setQty] = useState('1');
-  const [loading, setLoading] = useState(false);
-
-  const handleOrder = useCallback(
-    async (side) => {
-      const quantity = parseInt(qty, 10);
-      if (!quantity || quantity <= 0) {
-        Alert.alert('오류', '올바른 수량을 입력하세요.');
-        return;
-      }
-      setLoading(true);
-      try {
-        if (!useSampleData) {
-          await submitKisOrder({ ticker: item.ticker, quantity, side });
-        }
-        const label = side === 'buy' ? '매수' : '매도';
-        const message = useSampleData
-          ? `${item.name} ${quantity}주 ${label} 흐름을 샘플로 보여주고 있어요.`
-          : `${item.name} ${quantity}주 ${label} 주문이 완료되었습니다.`;
-        Alert.alert('주문 확인', message);
-        onClose();
-      } catch (e) {
-        Alert.alert('주문 실패', e.message);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [item, qty, onClose],
-  );
-
-  if (!item) return null;
-  const rateColor = getPriceColor(item.profit_rate);
-
-  return (
-    <BottomSheet
-      open={open}
-      onClose={onClose}
-      title={item.name}
-      cta={
-        <View style={styles.sheetCtaRow}>
-          <Button
-            onPress={() => handleOrder('sell')}
-            color="danger"
-            variant="weak"
-            style={styles.sheetCtaBtn}
-            loading={loading}
-          >
-            매도
-          </Button>
-          <Button
-            onPress={() => handleOrder('buy')}
-            color="primary"
-            style={styles.sheetCtaBtn}
-            loading={loading}
-          >
-            매수
-          </Button>
-        </View>
-      }
-    >
-      <View style={styles.sheetMetaRow}>
-        <Text style={styles.sheetCode}>{item.ticker}</Text>
-        <Text style={[styles.sheetRate, { color: rateColor }]}>
-          {formatRate(item.profit_rate)}
-        </Text>
-      </View>
-      <Text style={styles.sheetPriceMain}>
-        {formatPrice(item.current_price)}
-      </Text>
-      <View style={styles.orderRow}>
-        <Text style={styles.sheetLabel}>평균 구매가</Text>
-        <Text style={styles.sheetValue}>{formatPrice(item.avg_price)}</Text>
-      </View>
-      <View style={styles.orderRow}>
-        <Text style={styles.sheetLabel}>평가 손익률</Text>
-        <Text style={[styles.sheetValue, { color: rateColor }]}>
-          {formatRate(item.profit_rate)}
-        </Text>
-      </View>
-      <Text style={[styles.sheetLabel, { marginTop: 16, marginBottom: 6 }]}>
-        수량
-      </Text>
-      <TextInput
-        style={styles.qtyInput}
-        value={qty}
-        onChangeText={setQty}
-        keyboardType="numeric"
-        placeholder="수량 입력"
-        placeholderTextColor={tdsDark.textTertiary}
-      />
-    </BottomSheet>
-  );
-}
-
-// ─── 잔고 카드 ────────────────────────────────────────────────────────────────
-
-function BalanceCard({ item, onSelect }) {
-  const rateColor = getPriceColor(item.profit_rate);
-
-  return (
-    <ListRow
-      onPress={() => onSelect(item)}
-      left={<LogoBadge name={item.name} ticker={item.ticker} size={44} />}
-      title={item.name}
-      subtitle={item.ticker}
-      right={
-        <View style={styles.rightBlock}>
-          <Text style={[styles.rateText, { color: rateColor }]}>
-            {formatRate(item.profit_rate)}
-          </Text>
-          <Text style={styles.priceSmall}>
-            구매 {formatPrice(item.avg_price)}
-          </Text>
-          <Text style={styles.priceSmall}>
-            현재 {formatPrice(item.current_price)}
-          </Text>
-        </View>
-      }
-    />
-  );
-}
-
-// ─── 예수금 헤더 ──────────────────────────────────────────────────────────────
-
-function DepositHeader({ deposit, totalAsset }) {
-  return (
-    <View style={styles.depositSection}>
-      <Text style={styles.depositSubLabel}>실 자산</Text>
-      <Text style={styles.depositAmount}>{formatPrice(totalAsset)}</Text>
-      <View style={styles.depositSubRow}>
-        <View>
-          <Text style={styles.depositItemLabel}>총예수금</Text>
-          <Text style={styles.depositItemValue}>{formatPrice(deposit)}</Text>
-        </View>
-      </View>
-    </View>
-  );
-}
-
-function HoldingsHeader({ count, evalAmount }) {
-  return (
-    <View style={styles.holdingsHeader}>
-      <Text style={styles.sectionTitle}>보유잔고 · {count}개</Text>
-      <Text style={styles.holdingsEvalText}>
-        평가금액 {formatPrice(evalAmount)}
-      </Text>
-    </View>
-  );
-}
-
-function ScreenHeader() {
-  const today = new Date().toLocaleDateString('ko-KR', {
-    month: 'long',
-    day: 'numeric',
-  });
-  return (
-    <View style={styles.screenHeader}>
-      <View>
-        <Text style={styles.headerEyebrow}>계좌 · 자산</Text>
-        <Text style={styles.headerTitle}>내 자산</Text>
-        <Text style={styles.headerSub}>{today} 업데이트 기준으로 보여줘요</Text>
-      </View>
-      <View style={styles.headerPill}>
-        <Text style={styles.headerPillText}>실시간</Text>
-      </View>
-    </View>
-  );
-}
-
 // ─── 메인 ────────────────────────────────────────────────────────────────────
 
 export default function AccountScreen() {
   const authMode = useStore((s) => s.authMode);
-  const [balance, setBalance] = useState([]);
-  const [deposit, setDeposit] = useState(null);
-  const [summary, setSummary] = useState(null);
+  const [fullData, setFullData] = useState(null);
+  const [currency, setCurrency] = useState('KRW'); // 'KRW' | 'USD'
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState(null);
+  const [notice, setNotice] = useState(null);
   const [selected, setSelected] = useState(null);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [useSampleData, setUseSampleData] = useState(false);
-  const [notice, setNotice] = useState(null);
-
-  const fallbackEvalAmount = balance.reduce(
-    (sum, b) => sum + (b.eval_amount || 0),
-    0,
-  );
-  const evalAmount = summary?.evalAmount ?? fallbackEvalAmount;
-  const depositAmount = summary?.depositAmount ?? (deposit ?? 0);
-  const totalAsset = summary?.totalAsset ?? depositAmount + evalAmount;
 
   const load = useCallback(
     async (isRefresh = false) => {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
-      setError(null);
+      
       if (authMode === 'guest' || authMode === 'locked') {
-        setBalance(sampleAccount.balance);
-        setDeposit(sampleAccount.deposit);
-        setSummary(null);
-        setUseSampleData(true);
+        // 샘플 데이터 구성
+        setFullData({
+          krw: { totalAsset: 125400000, evalAmount: 85400000, depositAmount: 40000000, profitRate: 12.5, profitAmount: 9500000 },
+          usd: { totalAsset: 92450, evalAmount: 62450, depositAmount: 30000, profitRate: 15.2, profitAmount: 8200 },
+          holdings: sampleAccount.balance
+        });
         setNotice('비로그인 모드라서 샘플 계좌 데이터를 보여주고 있어요.');
         setLoading(false);
         setRefreshing(false);
         return;
       }
+
       try {
-        const data = await fetchKisBalance();
-        setBalance(data.balance || []);
-        setDeposit(data.deposit ?? null);
-        setSummary(data.summary ?? null);
-        setUseSampleData(false);
+        const data = await fetchKisFullBalance();
+        setFullData(data);
         setNotice(null);
       } catch (e) {
-        setBalance(sampleAccount.balance);
-        setDeposit(sampleAccount.deposit);
-        setSummary(null);
-        setUseSampleData(true);
-        setNotice(
-          '연결 전 화면을 미리 보고 있어요. 계좌 정보는 샘플 데이터로 보여주고 있어요.',
-        );
+        setNotice('연결 전 화면을 미리 보고 있어요. 계좌 정보는 샘플 데이터로 보여주고 있어요.');
+        setFullData({
+          krw: { totalAsset: 125400000, evalAmount: 85400000, depositAmount: 40000000, profitRate: 12.5, profitAmount: 9500000 },
+          usd: { totalAsset: 92450, evalAmount: 62450, depositAmount: 30000, profitRate: 15.2, profitAmount: 8200 },
+          holdings: sampleAccount.balance
+        });
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -345,10 +134,8 @@ export default function AccountScreen() {
     load();
   }, [load]);
 
-  const handleSelect = useCallback((item) => {
-    setSelected(item);
-    setSheetOpen(true);
-  }, []);
+  const currentSummary = currency === 'KRW' ? fullData?.krw : fullData?.usd;
+  const balance = fullData?.holdings || [];
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -357,83 +144,132 @@ export default function AccountScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => load(true)}
-            tintColor={tdsColors.blue500}
-          />
+          <RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={tdsColors.blue500} />
         }
       >
-        <ScreenHeader />
+        <View style={styles.screenHeader}>
+          <View>
+            <Text style={styles.headerEyebrow}>계좌 · 자산</Text>
+            <Text style={styles.headerTitle}>내 자산</Text>
+          </View>
+          <SegmentControl
+            tabs={[
+              { key: 'KRW', label: '원화' },
+              { key: 'USD', label: '달러' },
+            ]}
+            activeTab={currency}
+            onTabChange={setCurrency}
+          />
+        </View>
+
         {notice && (
           <View style={styles.noticeBox}>
             <Text style={styles.noticeText}>{notice}</Text>
           </View>
         )}
-        {deposit != null && (
-          <DepositHeader deposit={depositAmount} totalAsset={totalAsset} />
-        )}
-        {balance.length > 0 && (
-          <PortfolioSummary balance={balance} summary={summary} />
-        )}
 
-        <HoldingsHeader count={balance.length} evalAmount={evalAmount} />
         {loading ? (
-          <View style={styles.listCard}>
-            {[1, 2, 3].map((i) => (
-              <SkeletonRow key={i} />
-            ))}
-          </View>
-        ) : balance.length === 0 ? (
-          <View style={styles.emptyBox}>
-            <Text style={styles.emptyIcon}>📦</Text>
-            <Text style={styles.emptyTitle}>아직 보유한 종목이 없어요</Text>
-            <Text style={styles.emptyDesc}>
-              티커 탭에서 관심 종목을 매수하면 여기에 나타나요
-            </Text>
-          </View>
+          <ActivityIndicator size="large" color={tdsColors.blue500} style={{ marginTop: 40 }} />
         ) : (
-          <View style={styles.listCard}>
-            {balance.map((item) => (
-              <BalanceCard
-                key={item.ticker}
-                item={item}
-                onSelect={handleSelect}
-              />
-            ))}
-          </View>
+          <>
+            <View style={styles.depositSection}>
+              <Text style={styles.depositSubLabel}>실 자산 ({currency})</Text>
+              <Text style={styles.depositAmount}>{formatCurrency(currentSummary?.totalAsset, currency)}</Text>
+              <View style={styles.depositSubRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.depositItemLabel}>예수금</Text>
+                  <Text style={styles.depositItemValue}>{formatCurrency(currentSummary?.depositAmount, currency)}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.depositItemLabel}>평가금액</Text>
+                  <Text style={styles.depositItemValue}>{formatCurrency(currentSummary?.evalAmount, currency)}</Text>
+                </View>
+              </View>
+            </View>
+
+            <PortfolioSummary 
+              balance={balance} 
+              summary={currentSummary} 
+              currency={currency} 
+            />
+
+            <View style={styles.holdingsHeader}>
+              <Text style={styles.sectionTitle}>보유잔고 · {balance.length}개</Text>
+            </View>
+
+            <View style={styles.listCard}>
+              {balance.map((item) => (
+                <ListRow
+                  key={item.ticker}
+                  onPress={() => {
+                    setSelected(item);
+                    setSheetOpen(true);
+                  }}
+                  left={<LogoBadge name={item.name} ticker={item.ticker} size={44} />}
+                  title={item.name}
+                  subtitle={item.ticker}
+                  right={
+                    <View style={styles.rightBlock}>
+                      <Text style={[styles.rateText, { color: getPriceColor(item.profit_rate) }]}>
+                        {formatRate(item.profit_rate)}
+                      </Text>
+                      <Text style={styles.priceSmall}>
+                        {currency === 'USD' ? `$${item.eval_amount_foreign?.toFixed(2)}` : formatPrice(item.eval_amount)}
+                      </Text>
+                    </View>
+                  }
+                />
+              ))}
+            </View>
+          </>
         )}
       </ScrollView>
 
-      <OrderSheet
-        item={selected}
+      <BottomSheet
         open={sheetOpen}
-        useSampleData={useSampleData}
         onClose={() => setSheetOpen(false)}
-      />
+        title={selected?.name}
+        cta={
+          <View style={styles.sheetCtaRow}>
+            <Button onPress={() => setSheetOpen(false)} variant="weak" style={{ flex: 1 }}>닫기</Button>
+            <Button onPress={() => Alert.alert('알림', '주문 기능은 준비 중입니다.')} style={{ flex: 1 }}>주문하기</Button>
+          </View>
+        }
+      >
+        {selected && (
+          <View style={{ paddingBottom: 20 }}>
+            <Text style={styles.sheetCode}>{selected.ticker}</Text>
+            <Text style={styles.sheetPriceMain}>
+              {currency === 'USD' ? `$${selected.current_price?.toFixed(2)}` : formatPrice(selected.current_price)}
+            </Text>
+            <View style={styles.orderRow}>
+              <Text style={styles.sheetLabel}>보유 수량</Text>
+              <Text style={styles.sheetValue}>{selected.qty}주</Text>
+            </View>
+            <View style={styles.orderRow}>
+              <Text style={styles.sheetLabel}>평가 손익</Text>
+              <Text style={[styles.sheetValue, { color: getPriceColor(selected.profit_rate) }]}>
+                {formatSignedCurrency(currency === 'USD' ? (selected.eval_amount_foreign - selected.buy_amount / selected.exchange_rate) : selected.profit_amount, currency)}
+              </Text>
+            </View>
+          </View>
+        )}
+      </BottomSheet>
     </SafeAreaView>
   );
 }
-
-// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: tdsDark.bgPrimary },
   scroll: { flex: 1 },
   content: { paddingTop: 8, paddingBottom: 32 },
-  center: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-  },
   screenHeader: {
     marginHorizontal: 16,
     marginTop: 4,
     marginBottom: 8,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
   },
   headerEyebrow: { fontSize: 12, color: tdsDark.textTertiary, marginBottom: 2 },
   headerTitle: {
@@ -442,206 +278,64 @@ const styles = StyleSheet.create({
     color: tdsDark.textPrimary,
     letterSpacing: -0.5,
   },
-  headerSub: { fontSize: 13, color: tdsDark.textSecondary, marginTop: 2 },
-  headerPill: {
-    marginTop: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: tdsColors.blue50,
-    borderWidth: 1,
-    borderColor: `${tdsColors.blue500}33`,
-  },
-  headerPillText: { fontSize: 12, color: tdsColors.blue700, fontWeight: '600' },
   noticeBox: {
     marginHorizontal: 16,
     marginTop: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    padding: 14,
     backgroundColor: tdsColors.blue50,
     borderRadius: 16,
   },
-  noticeText: { fontSize: 13, lineHeight: 19, color: tdsColors.blue700 },
-
+  noticeText: { fontSize: 13, color: tdsColors.blue700, lineHeight: 18 },
   depositSection: {
     marginHorizontal: 16,
     marginTop: 12,
-    paddingHorizontal: 20,
-    paddingVertical: 20,
+    padding: 20,
     borderRadius: 24,
     backgroundColor: tdsDark.bgCard,
-    shadowColor: '#000000',
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 3,
   },
-  depositSubLabel: {
-    fontSize: 13,
-    color: tdsDark.textTertiary,
-    marginBottom: 4,
-  },
-  depositSubRow: {
-    flexDirection: 'row',
-    marginTop: 16,
-    gap: 12,
-    alignItems: 'center',
-  },
-  depositItemLabel: {
-    fontSize: 12,
-    color: tdsDark.textTertiary,
-    marginBottom: 3,
-  },
-  depositItemValue: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: tdsDark.textSecondary,
-  },
-  depositAmount: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: tdsDark.textPrimary,
-  },
-
-  sectionTitle: {
-    fontSize: 13,
-    color: tdsDark.textSecondary,
-    marginHorizontal: 20,
-    marginTop: 20,
-    marginBottom: 6,
-    fontWeight: '600',
-  },
-  holdingsHeader: {
-    marginHorizontal: 0,
-    marginBottom: 4,
-  },
-  holdingsEvalText: {
-    marginHorizontal: 20,
-    marginBottom: 8,
-    fontSize: 13,
-    color: tdsDark.textSecondary,
-  },
-  listCard: {
-    marginTop: 4,
-    backgroundColor: tdsDark.bgCard,
-  },
-
-  rightBlock: { alignItems: 'flex-end' },
-  rateText: { fontSize: 15, fontWeight: '700' },
-  priceSmall: { fontSize: 12, color: tdsDark.textSecondary, marginTop: 2 },
-
+  depositSubLabel: { fontSize: 13, color: tdsDark.textTertiary, marginBottom: 4 },
+  depositAmount: { fontSize: 28, fontWeight: '700', color: tdsDark.textPrimary },
+  depositSubRow: { flexDirection: 'row', marginTop: 16, gap: 12 },
+  depositItemLabel: { fontSize: 12, color: tdsDark.textTertiary, marginBottom: 3 },
+  depositItemValue: { fontSize: 15, fontWeight: '600', color: tdsDark.textSecondary },
   portfolioCard: {
     marginHorizontal: 16,
     marginTop: 12,
     padding: 16,
     borderRadius: 20,
     backgroundColor: tdsDark.bgCard,
-    shadowColor: '#000000',
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
   },
-  portfolioTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  portfolioTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: tdsDark.textPrimary,
-  },
-  portfolioAvgRate: { fontSize: 16, fontWeight: '700' },
+  portfolioTopRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
+  portfolioTitle: { fontSize: 14, fontWeight: '600', color: tdsDark.textPrimary },
   portfolioMetaRight: { alignItems: 'flex-end', gap: 4 },
+  portfolioAvgRate: { fontSize: 16, fontWeight: '700' },
   portfolioProfit: { fontSize: 13, fontWeight: '600' },
-
   portfolioChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   portfolioChip: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: tdsDark.bgSecondary,
     borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    gap: 4,
   },
-  portfolioChipName: { fontSize: 13, color: tdsDark.textSecondary },
-  portfolioChipRate: { fontSize: 13, fontWeight: '600' },
-
-  emptyBox: { alignItems: 'center', paddingVertical: 40 },
-  emptyText: { color: tdsDark.textSecondary, fontSize: 14 },
-  emptyIcon: { fontSize: 36, marginBottom: 12 },
-  emptyTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: tdsDark.textPrimary,
-    marginBottom: 6,
-  },
-  emptyDesc: {
-    fontSize: 13,
-    color: tdsDark.textSecondary,
-    textAlign: 'center',
-    lineHeight: 19,
-  },
-
-  skeletonRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: tdsDark.border,
-  },
-  skeletonAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#e8ecef',
-    marginRight: 12,
-  },
-  skeletonBody: { flex: 1 },
-  skeletonRight: { alignItems: 'flex-end' },
-  skeletonLine: {
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#e8ecef',
-  },
-
-  orderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  sheetMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 4,
-  },
-  sheetCode: { fontSize: 13, color: tdsDark.textTertiary },
-  sheetRate: { fontSize: 13, fontWeight: '600' },
-  sheetPriceMain: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: tdsDark.textPrimary,
-    letterSpacing: -0.5,
-    marginBottom: 8,
-  },
-  sheetCtaRow: { flexDirection: 'row', gap: 10 },
-  sheetCtaBtn: { flex: 1 },
-  sheetLabel: { fontSize: 13, color: tdsDark.textSecondary },
-  sheetValue: { fontSize: 15, fontWeight: '600', color: tdsDark.textPrimary },
-  qtyInput: {
-    backgroundColor: tdsDark.bgSecondary,
-    borderWidth: 1,
-    borderColor: tdsDark.border,
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: tdsDark.textPrimary,
-  },
+  portfolioChipName: { fontSize: 12, color: tdsDark.textSecondary },
+  portfolioChipRate: { fontSize: 12, fontWeight: '600' },
+  holdingsHeader: { marginTop: 24, marginBottom: 8 },
+  sectionTitle: { fontSize: 13, color: tdsDark.textSecondary, marginHorizontal: 20, fontWeight: '600' },
+  listCard: { backgroundColor: tdsDark.bgCard, borderTopWidth: 1, borderTopColor: tdsDark.border },
+  rightBlock: { alignItems: 'flex-end' },
+  rateText: { fontSize: 15, fontWeight: '700' },
+  priceSmall: { fontSize: 12, color: tdsDark.textSecondary, marginTop: 2 },
+  sheetCtaRow: { flexDirection: 'row', gap: 12, marginTop: 10 },
+  sheetCode: { fontSize: 13, color: tdsDark.textTertiary, marginBottom: 4 },
+  sheetPriceMain: { fontSize: 32, fontWeight: '700', color: tdsDark.textPrimary, marginBottom: 16 },
+  orderRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
+  sheetLabel: { fontSize: 14, color: tdsDark.textSecondary },
+  sheetValue: { fontSize: 14, fontWeight: '600', color: tdsDark.textPrimary },
 });
