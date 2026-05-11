@@ -18,53 +18,39 @@ import { tdsDark, tdsColors } from '../../constants/tdsColors';
 import { Badge } from '../../components/tds/Badge';
 import { fetchRealtimeTrades, toggleRealtimeTrade } from '../../lib/realtimeApi';
 
-function TradeCard({ item, onPress, onToggle }) {
+function TradeRow({ item, isLast, onPress, onToggle }) {
   const statusBadgeColor = item.is_active ? 'blue' : 'grey';
 
   return (
-    <TouchableOpacity style={styles.card} onPress={() => onPress(item)} activeOpacity={0.85}>
-      {/* 종목 + 상태 뱃지 */}
-      <View style={styles.cardTop}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.cardTicker}>{item.ticker}</Text>
-          <Text style={styles.cardMarket}>{item.market}</Text>
-        </View>
-        <View style={styles.cardBadges}>
-          <TouchableOpacity
-            onPress={() => onToggle(item)}
-            activeOpacity={0.7}
-          >
-            <Badge
-              color={statusBadgeColor}
-              size="small"
-              variant={item.is_active ? 'fill' : 'weak'}
-            >
-              {item.is_active ? 'ON' : 'OFF'}
-            </Badge>
-          </TouchableOpacity>
-        </View>
+    <TouchableOpacity
+      style={[styles.tradeRow, !isLast && styles.tradeRowBorder]}
+      onPress={() => onPress(item)}
+      activeOpacity={0.7}
+    >
+      <View style={styles.tradeIcon}>
+        <Ionicons
+          name="rocket-outline"
+          size={18}
+          color={tdsColors.blue500}
+        />
       </View>
-
-      {/* 상세 정보 */}
-      <View style={styles.cardInfoGrid}>
-        <View style={styles.cardInfoItem}>
-          <Text style={styles.cardInfoLabel}>기준가</Text>
-          <Text style={styles.cardInfoValue}>${item.base_price.toFixed(2)}</Text>
-        </View>
-        <View style={styles.cardInfoItem}>
-          <Text style={styles.cardInfoLabel}>갭</Text>
-          <Text style={styles.cardInfoValue}>{item.gap}%</Text>
-        </View>
-        <View style={styles.cardInfoItem}>
-          <Text style={styles.cardInfoLabel}>수량</Text>
-          <Text style={styles.cardInfoValue}>{item.quantity}</Text>
-        </View>
+      <View style={styles.tradeInfo}>
+        <Text style={styles.tradeTicker}>{item.ticker}</Text>
+        <Text style={styles.tradeMeta}>{item.market} · ${item.base_price.toFixed(2)} · {item.gap}% · {item.quantity}주</Text>
       </View>
-
-      {/* 수정 버튼 */}
-      <View style={styles.cardFooter}>
-        <Ionicons name="chevron-forward" size={18} color={tdsDark.textTertiary} />
-      </View>
+      <TouchableOpacity
+        onPress={() => onToggle(item)}
+        activeOpacity={0.7}
+      >
+        <Badge
+          color={statusBadgeColor}
+          size="small"
+          variant={item.is_active ? 'fill' : 'weak'}
+        >
+          {item.is_active ? 'ON' : 'OFF'}
+        </Badge>
+      </TouchableOpacity>
+      <Ionicons name="chevron-forward" size={16} color={tdsDark.textTertiary} />
     </TouchableOpacity>
   );
 }
@@ -158,15 +144,16 @@ export default function RealtimeScreen() {
           <ActivityIndicator size="large" color={tdsColors.blue500} />
         </View>
       ) : (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollContent}>
           {trades.length === 0 ? (
             <EmptyState />
           ) : (
-            <View style={{ gap: 12 }}>
-              {trades.map(trade => (
-                <TradeCard
+            <View style={styles.listCard}>
+              {trades.map((trade, i) => (
+                <TradeRow
                   key={trade.id}
                   item={trade}
+                  isLast={i === trades.length - 1}
                   onPress={handlePress}
                   onToggle={handleToggle}
                 />
@@ -185,97 +172,86 @@ const styles = StyleSheet.create({
     backgroundColor: tdsDark.bgPrimary,
   },
   screenHeader: {
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: tdsDark.border,
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 10,
   },
   headerEyebrow: {
     fontSize: 12,
-    fontWeight: '600',
-    color: tdsColors.blue500,
-    marginBottom: 4,
+    color: tdsDark.textTertiary,
+    marginBottom: 2,
   },
   headerTitle: {
-    fontSize: 24,
-    fontWeight: '700',
+    fontSize: 28,
+    fontWeight: '800',
     color: tdsDark.textPrimary,
-    marginBottom: 4,
+    letterSpacing: -0.5,
+    marginBottom: 2,
   },
   headerSub: {
-    fontSize: 14,
+    fontSize: 13,
     color: tdsDark.textSecondary,
+    marginTop: 2,
   },
   addRow: {
-    marginHorizontal: 16,
-    marginVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
+    gap: 6,
+    marginHorizontal: 16,
+    marginBottom: 12,
     paddingVertical: 10,
-    backgroundColor: tdsColors.blue500 + '15',
+    paddingHorizontal: 14,
+    backgroundColor: `${tdsColors.blue500}15`,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: tdsColors.blue500 + '30',
+    borderColor: `${tdsColors.blue500}30`,
   },
   addRowText: {
     fontSize: 14,
     fontWeight: '600',
     color: tdsColors.blue500,
   },
-  card: {
+  scrollContent: {
+    paddingBottom: 32,
+  },
+  listCard: {
+    marginHorizontal: 16,
     backgroundColor: tdsDark.bgCard,
     borderRadius: 20,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: tdsDark.border,
+    overflow: 'hidden',
   },
-  cardTop: {
+  tradeRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  cardTicker: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: tdsDark.textPrimary,
-    marginBottom: 2,
-  },
-  cardMarket: {
-    fontSize: 12,
-    color: tdsDark.textTertiary,
-  },
-  cardBadges: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  cardInfoGrid: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 12,
-  },
-  cardInfoItem: {
-    flex: 1,
-    backgroundColor: tdsDark.bgPrimary,
-    borderRadius: 8,
-    padding: 8,
     alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
   },
-  cardInfoLabel: {
-    fontSize: 11,
-    color: tdsDark.textTertiary,
-    marginBottom: 2,
+  tradeRowBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: tdsDark.border,
   },
-  cardInfoValue: {
-    fontSize: 13,
+  tradeIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: `${tdsColors.blue500}15`,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  tradeInfo: {
+    flex: 1,
+  },
+  tradeTicker: {
+    fontSize: 14,
     fontWeight: '600',
     color: tdsDark.textPrimary,
   },
-  cardFooter: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
+  tradeMeta: {
+    fontSize: 12,
+    color: tdsDark.textTertiary,
+    marginTop: 2,
   },
   loadingContainer: {
     flex: 1,
@@ -285,16 +261,18 @@ const styles = StyleSheet.create({
   emptyBox: {
     alignItems: 'center',
     paddingVertical: 60,
+    paddingHorizontal: 32,
   },
   emptyTitle: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
     color: tdsDark.textPrimary,
-    marginTop: 12,
+    marginTop: 16,
+    marginBottom: 8,
   },
   emptySub: {
     fontSize: 13,
-    color: tdsDark.textTertiary,
-    marginTop: 4,
+    color: tdsDark.textSecondary,
+    textAlign: 'center',
   },
 });

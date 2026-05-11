@@ -186,15 +186,14 @@ export default function RealtimeFormScreen() {
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => router.back()}
-          style={styles.backButton}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          style={styles.backBtn}
+          hitSlop={8}
         >
-          <Ionicons name="chevron-back" size={24} color={tdsDark.textPrimary} />
+          <Ionicons name="chevron-back" size={22} color={tdsDark.textPrimary} />
+          <Text style={styles.backText}>뒤로</Text>
         </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.headerEyebrow}>설정</Text>
-          <Text style={styles.headerTitle}>{isEdit ? '수정' : '등록'}</Text>
-        </View>
+        <Text style={styles.headerTitle}>{isEdit ? '실시간 매매 수정' : '실시간 매매 등록'}</Text>
+        <View style={styles.headerRight} />
       </View>
 
       <ScrollView style={{ flex: 1, padding: 16 }} contentContainerStyle={{ paddingBottom: 100 }}>
@@ -359,24 +358,30 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: tdsDark.border,
-    gap: 12,
+    backgroundColor: tdsDark.bgPrimary,
   },
-  backButton: {
-    padding: 4,
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    minWidth: 60,
   },
-  headerEyebrow: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: tdsColors.blue500,
+  backText: {
+    fontSize: 15,
+    color: tdsDark.textPrimary,
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
     color: tdsDark.textPrimary,
+  },
+  headerRight: {
+    minWidth: 60,
   },
   fieldLabel: {
     fontSize: 14,
