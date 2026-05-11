@@ -306,7 +306,7 @@ export default function RealtimeScreen() {
 
   const handlePress = (item) => {
     router.push({
-      pathname: '/realtime-form',
+      pathname: '/realtime-orders',
       params: {
         id: item.id,
         ticker: item.ticker,
