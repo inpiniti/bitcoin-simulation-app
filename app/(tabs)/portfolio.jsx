@@ -13,9 +13,12 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
+import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { tdsDark, tdsColors } from '../../constants/tdsColors';
 import { ListRow } from '../../components/tds/ListRow';
 import { LogoBadge } from '../../components/tds/LogoBadge';
+import { BottomSheet } from '../../components/tds/BottomSheet';
 import { fetchPortfolioData } from '../../lib/portfolioApi';
 import { fetchKisFullBalance } from '../../lib/kisApi';
 import { PORTFOLIO_DATA as FALLBACK_DATA } from '../../lib/portfolioData';
@@ -60,7 +63,9 @@ export default function PortfolioScreen() {
   const [data, setData] = useState({ based_on_person: [], based_on_stock: [], meta: {} });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  
+  const [selectedStock, setSelectedStock] = useState(null);
+  const [showActionSheet, setShowActionSheet] = useState(false);
+
   // Tweak States
   const [totalAssets, setTotalAssets] = useState(100000); // 기본 $100,000 (USD 기준)
   const [tickerCount, setTickerCount] = useState(15);
@@ -280,25 +285,84 @@ export default function PortfolioScreen() {
         ) : (
           <View style={styles.listContainer}>
             {proposedPortfolio.map((item, idx) => (
-              <ListRow
+              <TouchableOpacity
                 key={item.stock}
-                left={<View style={styles.rankWrap}><Text style={styles.rankText}>{idx + 1}</Text><LogoBadge name={item.name} ticker={item.stock} size={40} /></View>}
-                title={item.name}
-                subtitle={`${item.stock} · $${item.close}`}
-                right={
-                  <View style={styles.rightBlock}>
-                    <Text style={styles.suggestedQtyText}>{formatNumber(item.suggestedQty)}주</Text>
-                    <View style={styles.weightBarWrap}>
-                      <View style={[styles.weightBar, { width: `${item.weightPercent}%` }]} />
-                      <Text style={styles.weightPercentText}>{item.weightPercent.toFixed(1)}%</Text>
+                onPress={() => {
+                  setSelectedStock(item);
+                  setShowActionSheet(true);
+                }}
+                activeOpacity={0.7}
+              >
+                <ListRow
+                  left={<View style={styles.rankWrap}><Text style={styles.rankText}>{idx + 1}</Text><LogoBadge name={item.name} ticker={item.stock} size={40} /></View>}
+                  title={item.name}
+                  subtitle={`${item.stock} · $${item.close}`}
+                  right={
+                    <View style={styles.rightBlock}>
+                      <Text style={styles.suggestedQtyText}>{formatNumber(item.suggestedQty)}주</Text>
+                      <View style={styles.weightBarWrap}>
+                        <View style={[styles.weightBar, { width: `${item.weightPercent}%` }]} />
+                        <Text style={styles.weightPercentText}>{item.weightPercent.toFixed(1)}%</Text>
+                      </View>
                     </View>
-                  </View>
-                }
-              />
+                  }
+                />
+              </TouchableOpacity>
             ))}
           </View>
         )}
       </ScrollView>
+
+      {/* 액션 시트 */}
+      <BottomSheet visible={showActionSheet} onClose={() => setShowActionSheet(false)}>
+        <View style={{ paddingHorizontal: 16, paddingBottom: 20 }}>
+          <Text style={styles.actionSheetTitle}>
+            {selectedStock?.stock} {selectedStock?.name}
+          </Text>
+          <TouchableOpacity
+            style={styles.actionSheetOption}
+            onPress={() => {
+              setShowActionSheet(false);
+              // TODO: 매수 기능
+            }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="arrow-down-circle-outline" size={18} color={tdsColors.blue500} />
+            <Text style={styles.actionSheetOptionText}>매수</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.actionSheetOption}
+            onPress={() => {
+              setShowActionSheet(false);
+              // TODO: 매도 기능
+            }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="arrow-up-circle-outline" size={18} color={tdsColors.red500} />
+            <Text style={[styles.actionSheetOptionText, { color: tdsColors.red500 }]}>매도</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.actionSheetOption}
+            onPress={() => {
+              setShowActionSheet(false);
+              if (selectedStock) {
+                router.push({
+                  pathname: '/realtime-form',
+                  params: {
+                    ticker: selectedStock.stock,
+                    market: 'NAS',
+                    auto_fetch_price: 'true',
+                  },
+                });
+              }
+            }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="rocket-outline" size={18} color={tdsColors.blue500} />
+            <Text style={styles.actionSheetOptionText}>실시간 등록</Text>
+          </TouchableOpacity>
+        </View>
+      </BottomSheet>
     </SafeAreaView>
   );
 }
@@ -423,4 +487,24 @@ const styles = StyleSheet.create({
   weightBarWrap: { flexDirection: 'row', alignItems: 'center', marginTop: 4, width: '100%', justifyContent: 'flex-end' },
   weightBar: { height: 4, backgroundColor: tdsColors.blue500, borderRadius: 2, marginRight: 8, maxWidth: 60 },
   weightPercentText: { fontSize: 12, color: tdsColors.blue600, fontWeight: '700' },
+
+  actionSheetTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: tdsDark.textPrimary,
+    marginBottom: 12,
+  },
+  actionSheetOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: tdsDark.border,
+  },
+  actionSheetOptionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: tdsColors.blue500,
+  },
 });

@@ -20,12 +20,15 @@ import {
   TouchableOpacity,
   Image,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { tdsDark, tdsColors } from '../../constants/tdsColors';
 import { MiniSparkline } from '../../components/tds/MiniSparkline';
+import { BottomSheet } from '../../components/tds/BottomSheet';
 import {
   fetchSp500ActiveDates,
   fetchSp500MetaByDate,
@@ -33,7 +36,7 @@ import {
   fetchSp500HourlyByDate,
 } from '../../lib/sp500Api';
 import { fetchTickerWeeklyCloses } from '../../lib/priceApi';
-import { ActivityIndicator } from 'react-native';
+import { fetchSettings } from '../../lib/tradingApi';
 
 // ─── 날짜 유틸 ────────────────────────────────────────────────────────────────
 
@@ -363,7 +366,7 @@ function SkeletonRow() {
 
 // ─── 종목 행 ─────────────────────────────────────────────────────────────────
 
-function StockRow({ item, rank, isLast, selectedDate }) {
+function StockRow({ item, rank, isLast, selectedDate, onPress }) {
   const [weeklyData, setWeeklyData] = useState(null);
   const [weeklyLoading, setWeeklyLoading] = useState(false);
 
@@ -460,7 +463,11 @@ function StockRow({ item, rank, isLast, selectedDate }) {
 
   return (
     <>
-      <View style={styles.stockRow}>
+      <TouchableOpacity
+        onPress={() => onPress?.(item)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.stockRow}>
         {/* 좌: 순위 아바타 */}
         <View style={styles.rankAvatar}>
           <Text style={styles.rankText}>{rank}</Text>
@@ -537,6 +544,7 @@ function StockRow({ item, rank, isLast, selectedDate }) {
           <View style={{ height: 60 }} />
         )}
       </View>
+      </TouchableOpacity>
     </>
   );
 }
@@ -603,6 +611,8 @@ export default function NewsScreen() {
   const [stocks, setStocks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedStock, setSelectedStock] = useState(null);
+  const [showActionSheet, setShowActionSheet] = useState(false);
 
   // 시간대별 조회 (Option 2)
   const [hourlyTimes, setHourlyTimes] = useState([]);
@@ -758,6 +768,10 @@ export default function NewsScreen() {
                         rank={idx + 1}
                         isLast={idx === displayStocks.filter(s => s.direction === 'bullish').length - 1}
                         selectedDate={selectedDate}
+                        onPress={(stock) => {
+                          setSelectedStock(stock);
+                          setShowActionSheet(true);
+                        }}
                       />
                     ))}
                   </View>
@@ -780,6 +794,10 @@ export default function NewsScreen() {
                         rank={idx + 1}
                         isLast={idx === displayStocks.filter(s => s.direction === 'bearish').length - 1}
                         selectedDate={selectedDate}
+                        onPress={(stock) => {
+                          setSelectedStock(stock);
+                          setShowActionSheet(true);
+                        }}
                       />
                     ))}
                   </View>
@@ -791,6 +809,57 @@ export default function NewsScreen() {
 
         <View style={{ height: 32 }} />
       </ScrollView>
+
+      {/* 액션 시트 */}
+      <BottomSheet visible={showActionSheet} onClose={() => setShowActionSheet(false)}>
+        <View style={{ paddingHorizontal: 16, paddingBottom: 20 }}>
+          <Text style={styles.actionSheetTitle}>
+            {selectedStock?.ticker}
+          </Text>
+          <TouchableOpacity
+            style={styles.actionSheetOption}
+            onPress={() => {
+              setShowActionSheet(false);
+              // TODO: 매수 기능
+            }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="arrow-down-circle-outline" size={18} color={tdsColors.blue500} />
+            <Text style={styles.actionSheetOptionText}>매수</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.actionSheetOption}
+            onPress={() => {
+              setShowActionSheet(false);
+              // TODO: 매도 기능
+            }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="arrow-up-circle-outline" size={18} color={tdsColors.red500} />
+            <Text style={[styles.actionSheetOptionText, { color: tdsColors.red500 }]}>매도</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.actionSheetOption}
+            onPress={() => {
+              setShowActionSheet(false);
+              if (selectedStock) {
+                router.push({
+                  pathname: '/realtime-form',
+                  params: {
+                    ticker: selectedStock.ticker,
+                    market: 'NAS',
+                    auto_fetch_price: 'true',
+                  },
+                });
+              }
+            }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="rocket-outline" size={18} color={tdsColors.blue500} />
+            <Text style={styles.actionSheetOptionText}>실시간 등록</Text>
+          </TouchableOpacity>
+        </View>
+      </BottomSheet>
     </SafeAreaView>
   );
 }
@@ -1099,6 +1168,27 @@ const styles = StyleSheet.create({
   chartRow: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: tdsDark.border,
+  },
+
+  // ── 액션 시트 ──
+  actionSheetTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: tdsDark.textPrimary,
+    marginBottom: 12,
+  },
+  actionSheetOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: tdsDark.border,
+  },
+  actionSheetOptionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: tdsColors.blue500,
   },
 });
 

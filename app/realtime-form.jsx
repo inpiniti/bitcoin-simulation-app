@@ -79,8 +79,30 @@ export default function RealtimeFormScreen() {
         quantity: parseInt(params.quantity) || 0,
         is_active: params.is_active !== 'false',
       });
+    } else if (params.ticker) {
+      // 포트폴리오/뉴스에서 ticker 전달받은 경우
+      setForm({
+        ticker: params.ticker,
+        market: params.market || 'NAS',
+        gap: 1,
+        base_price: 0,
+        quantity: 0,
+        is_active: true,
+      });
+      // auto_fetch_price 플래그가 있으면 현재가 자동 조회
+      if (params.auto_fetch_price === 'true') {
+        setLoadingPrice(true);
+      }
     }
   }, [isEdit, params]);
+
+  // 초기 로드 시 자동 현재가 조회
+  useEffect(() => {
+    if (loadingPrice && form.ticker.trim() && !isEdit && params.auto_fetch_price === 'true') {
+      const timer = setTimeout(() => handleFetchPrice(), 500);
+      return () => clearTimeout(timer);
+    }
+  }, [loadingPrice, form.ticker, isEdit, params.auto_fetch_price]);
 
   const handleFetchPrice = async () => {
     if (!form.ticker.trim()) {
