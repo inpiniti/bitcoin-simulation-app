@@ -100,7 +100,7 @@ export default function RealtimeScreen() {
   const setupSubscription = useCallback(() => {
     try {
       if (subscriptionRef.current) {
-        supabase.removeChannel(subscriptionRef.current);
+        subscriptionRef.current.unsubscribe();
       }
 
       subscriptionRef.current = supabase
@@ -113,40 +113,44 @@ export default function RealtimeScreen() {
             table: 'realtime_trading',
           },
           (payload) => {
-          // 감지된 종목 표시 (3초간 테두리 표시)
-          const tradeId = payload.new?.id || payload.old?.id;
-          if (tradeId) {
-            setDetectedIds((prev) => new Set(prev).add(tradeId));
+            // 감지된 종목 표시 (3초간 테두리 표시)
+            const tradeId = payload.new?.id || payload.old?.id;
+            if (tradeId) {
+              setDetectedIds((prev) => new Set(prev).add(tradeId));
 
-            if (detectionTimeoutRef.current) {
-              clearTimeout(detectionTimeoutRef.current);
+              if (detectionTimeoutRef.current) {
+                clearTimeout(detectionTimeoutRef.current);
+              }
+
+              detectionTimeoutRef.current = setTimeout(() => {
+                setDetectedIds((prev) => {
+                  const next = new Set(prev);
+                  next.delete(tradeId);
+                  return next;
+                });
+              }, 3000);
             }
 
-            detectionTimeoutRef.current = setTimeout(() => {
-              setDetectedIds((prev) => {
-                const next = new Set(prev);
-                next.delete(tradeId);
-                return next;
-              });
-            }, 3000);
+            // 데이터 업데이트 (기준가, 수량 등 변경)
+            setTrades((prevTrades) =>
+              prevTrades.map((t) =>
+                t.id === tradeId
+                  ? {
+                      ...t,
+                      base_price: payload.new?.base_price ?? t.base_price,
+                      quantity: payload.new?.quantity ?? t.quantity,
+                      updated_at: payload.new?.updated_at ?? t.updated_at,
+                    }
+                  : t
+              )
+            );
           }
-
-          // 데이터 업데이트 (기준가, 수량 등 변경)
-          setTrades((prevTrades) =>
-            prevTrades.map((t) =>
-              t.id === tradeId
-                ? {
-                    ...t,
-                    base_price: payload.new?.base_price ?? t.base_price,
-                    quantity: payload.new?.quantity ?? t.quantity,
-                    updated_at: payload.new?.updated_at ?? t.updated_at,
-                  }
-                : t
-            )
-          );
-        }
-      )
-      .subscribe();
+        )
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            console.log('[Realtime] 구독 성공');
+          }
+        });
     } catch (e) {
       Alert.alert('구독 에러', `Realtime 구독 설정 실패:\n\n${e.message || '알 수 없는 오류'}`);
     }
