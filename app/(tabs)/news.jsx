@@ -58,9 +58,6 @@ function getSundayOfWeek(d) {
 
 // ─── 화면 헤더 (계좌 탭과 동일 패턴) ─────────────────────────────────────────
 
-import { fetchSettings } from '../../lib/tradingApi';
-import { router } from 'expo-router';
-
 function ScreenHeader() {
   const today = new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' });
 
