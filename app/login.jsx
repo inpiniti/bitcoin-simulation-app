@@ -83,11 +83,15 @@ export default function LoginScreen() {
         }),
       );
 
-      // WebSocket 키 자동 발급 (로그인 후 백그라운드에서 실행)
-      ensureWebSocketKey(appkey.trim(), appsecret.trim()).catch((e) => {
-        console.warn('WebSocket 키 발급 실패:', e);
-        // 키 발급 실패해도 로그인 진행 (실시간 매매 사용 시에만 필요)
-      });
+      // WebSocket 키 자동 발급 (로그인 후 실행)
+      const wsKeyResult = await ensureWebSocketKey(appkey.trim(), appsecret.trim());
+      if (!wsKeyResult.success) {
+        Alert.alert(
+          '⚠️ WebSocket 키 발급',
+          `키 발급에 실패했습니다.\n\n오류: ${wsKeyResult.error?.message || '알 수 없는 오류'}\n\n(실시간 매매 사용 시에만 필요합니다)`,
+          [{ text: '확인', onPress: () => {} }]
+        );
+      }
 
       startLoginSession({ accountNo: accountNo.trim() });
     } catch (e) {
