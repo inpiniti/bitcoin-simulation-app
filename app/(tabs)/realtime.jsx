@@ -26,6 +26,8 @@ import {
   fetchRealtimeTrades,
   toggleRealtimeTrade,
   fetchWebSocketKey,
+  fetchDetectionStatus,
+  startDetection,
 } from '../../lib/realtimeApi';
 
 const KIS_WS_URL = 'ws://ops.koreainvestment.com:21000';
@@ -81,6 +83,8 @@ export default function RealtimeScreen() {
   const [trades, setTrades] = useState([]);
   const [loading, setLoading] = useState(true);
   const [detectedIds, setDetectedIds] = useState(new Set());
+  const [detectionRunning, setDetectionRunning] = useState(false);
+  const [startingDetection, setStartingDetection] = useState(false);
 
   const wsRef = useRef(null);
   const tradesRef = useRef([]);
@@ -215,59 +219,84 @@ export default function RealtimeScreen() {
     [handleWsMessage]
   );
 
-  // 마운트 시: trades 로드 → key 조회 → WS 연결
-  useEffect(() => {
-    let mounted = true;
-
-    (async () => {
-      // 1. trades 로드
-      setLoading(true);
-      const { data: tradesData, error: tradesErr } = await fetchRealtimeTrades();
-      if (!mounted) return;
-      if (tradesErr) {
-        Alert.alert('데이터 조회 실패', tradesErr.message || JSON.stringify(tradesErr));
-        setTrades([]);
-        setLoading(false);
-        return;
-      }
-      const list = tradesData || [];
-      setTrades(list);
-      tradesRef.current = list;
+  // trades 로드 + 서버 상태 확인 + (running일 때만) KIS WS 연결
+  const initializeRealtime = useCallback(async () => {
+    setLoading(true);
+    const { data: tradesData, error: tradesErr } = await fetchRealtimeTrades();
+    if (tradesErr) {
+      Alert.alert('데이터 조회 실패', tradesErr.message || JSON.stringify(tradesErr));
+      setTrades([]);
       setLoading(false);
+      return;
+    }
+    const list = tradesData || [];
+    setTrades(list);
+    tradesRef.current = list;
+    setLoading(false);
 
-      // 2. 활성 종목 없으면 WS 연결 안 함
-      const activeTrades = list.filter((t) => t.is_active);
-      if (activeTrades.length === 0) return;
+    // 서버 감지 상태 확인
+    const { data: statusData } = await fetchDetectionStatus();
+    const isRunning = statusData?.running === true;
+    setDetectionRunning(isRunning);
 
-      // 3. WS 키 조회
-      const { data: keyData, error: keyErr } = await fetchWebSocketKey();
-      if (!mounted) return;
-      if (keyErr || !keyData?.approval_key) {
-        Alert.alert(
-          'WS 키 없음',
-          keyErr?.message || 'WebSocket 키가 없습니다. 다시 로그인 해주세요.'
-        );
-        return;
-      }
+    // 기존 WS는 일단 정리
+    if (wsRef.current) {
+      try { wsRef.current.close(); } catch (_e) {}
+      wsRef.current = null;
+    }
 
-      // 4. WS 연결 + 구독
-      connectAndSubscribe(keyData.approval_key, activeTrades);
-    })();
+    // 서버 중지 상태면 앱 WS도 동작 안 함
+    if (!isRunning) return;
+
+    const activeTrades = list.filter((t) => t.is_active);
+    if (activeTrades.length === 0) return;
+
+    const { data: keyData, error: keyErr } = await fetchWebSocketKey();
+    if (keyErr || !keyData?.approval_key) {
+      Alert.alert(
+        'WS 키 없음',
+        keyErr?.message || 'WebSocket 키가 없습니다. 다시 로그인 해주세요.'
+      );
+      return;
+    }
+
+    connectAndSubscribe(keyData.approval_key, activeTrades);
+  }, [connectAndSubscribe]);
+
+  useEffect(() => {
+    initializeRealtime();
 
     return () => {
-      mounted = false;
       if (wsRef.current) {
-        try {
-          wsRef.current.close();
-        } catch (_e) {
-          // ignore
-        }
+        try { wsRef.current.close(); } catch (_e) {}
         wsRef.current = null;
       }
       Object.values(detectionTimeoutsRef.current).forEach(clearTimeout);
       detectionTimeoutsRef.current = {};
     };
-  }, [connectAndSubscribe]);
+  }, [initializeRealtime]);
+
+  const handleStartDetection = async () => {
+    setStartingDetection(true);
+    const { data, error } = await startDetection();
+    setStartingDetection(false);
+
+    if (error) {
+      Alert.alert('시작 실패', error.message || '서버 호출 실패');
+      return;
+    }
+
+    if (data?.status === 'no_key') {
+      Alert.alert('키 없음', data.message || 'WebSocket 키가 없습니다. 다시 로그인해주세요.');
+      return;
+    }
+
+    Alert.alert(
+      data?.status === 'started' ? '✅ 시작됨' : '이미 실행 중',
+      data?.status === 'started' ? '실시간 감지가 시작되었습니다.' : '서버 감지가 이미 동작 중입니다.'
+    );
+    await initializeRealtime();
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -308,6 +337,33 @@ export default function RealtimeScreen() {
           <Text style={styles.headerTitle}>실시간 매매</Text>
           <Text style={styles.headerSub}>가격 변동이 감지되면 카드에 빨간 테두리가 표시돼요</Text>
         </View>
+      </View>
+
+      {/* 서버 감지 상태 */}
+      <View style={styles.statusRow}>
+        <View style={styles.statusBadge}>
+          <View
+            style={[
+              styles.statusDot,
+              { backgroundColor: detectionRunning ? tdsColors.blue500 : tdsDark.textTertiary },
+            ]}
+          />
+          <Text style={styles.statusText}>
+            서버 감지 {detectionRunning ? '실행 중' : '중지됨'}
+          </Text>
+        </View>
+        {!detectionRunning && (
+          <TouchableOpacity
+            onPress={handleStartDetection}
+            disabled={startingDetection}
+            activeOpacity={0.7}
+            style={[styles.startButton, startingDetection && styles.startButtonDisabled]}
+          >
+            <Text style={styles.startButtonText}>
+              {startingDetection ? '시작 중...' : '시작'}
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* + 실시간 매매 버튼 */}
@@ -375,6 +431,46 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: tdsDark.textSecondary,
     marginTop: 2,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginHorizontal: 16,
+    marginBottom: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: tdsDark.bgCard,
+    borderRadius: 12,
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  statusText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: tdsDark.textPrimary,
+  },
+  startButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    backgroundColor: tdsColors.blue500,
+    borderRadius: 8,
+  },
+  startButtonDisabled: {
+    opacity: 0.5,
+  },
+  startButtonText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
   },
   addRow: {
     flexDirection: 'row',
