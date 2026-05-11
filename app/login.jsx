@@ -16,7 +16,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Button } from '../components/tds/Button';
 import { tdsColors, tdsDark } from '../constants/tdsColors';
 import { clearKisAuth, loginKis } from '../lib/kisApi';
-import { ensureWebSocketKey } from '../lib/realtimeApi';
+import { ensureWebSocketKey, saveKisCredentials } from '../lib/realtimeApi';
 import useStore from '../store/useStore';
 
 const KIS_CREDENTIALS_KEY = 'kis.credentials.v1';
@@ -91,6 +91,19 @@ export default function LoginScreen() {
           '⚠️ WebSocket 키 발급',
           `키 발급에 실패했습니다.\n\n오류: ${wsKeyResult.error?.message || '알 수 없는 오류'}\n\n(실시간 매매 사용 시에만 필요합니다)`,
           [{ text: '확인', onPress: () => {} }]
+        );
+      }
+
+      // KIS 자격증명을 Supabase에 저장 (서버 자동매매용)
+      const credResult = await saveKisCredentials({
+        accountNo: accountNo.trim(),
+        appkey: appkey.trim(),
+        appsecret: appsecret.trim(),
+      });
+      if (credResult.error) {
+        Alert.alert(
+          '⚠️ 자격증명 저장',
+          `Supabase 저장 실패: ${credResult.error.message || '알 수 없는 오류'}\n\n(서버 자동매매가 동작하지 않을 수 있습니다)`
         );
       }
 
