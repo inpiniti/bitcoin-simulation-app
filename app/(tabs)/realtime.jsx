@@ -32,9 +32,10 @@ import {
 
 const KIS_WS_URL = 'ws://ops.koreainvestment.com:21000';
 
-// BRK-B ↔ BRK/B 같은 클래스 종목 매칭을 위해 양쪽에서 - / 제거 후 비교
+// 클래스 종목 매칭용: 점/슬래시/하이픈 모두 제거 후 비교
+// (DB: BRK-B / KIS 응답: BRK/B 또는 BRKB → 모두 BRKB로 정규화)
 function normalizeTicker(t) {
-  return String(t || '').toUpperCase().replace(/[-/]/g, '');
+  return String(t || '').toUpperCase().replace(/[-./]/g, '');
 }
 
 function TradeRow({ item, isLast, onPress, onToggle, isDetected }) {
@@ -181,7 +182,10 @@ export default function RealtimeScreen() {
         ws.onopen = () => {
           for (const trade of activeTrades) {
             const market = (trade.market || '').toUpperCase();
-            const ticker = (trade.ticker || '').toUpperCase().replace(/-/g, '/');
+            // KIS WS는 점→/, 하이픈→제거 (BRK.B → BRK/B, BRK-B → BRKB)
+            const ticker = (trade.ticker || '').toUpperCase()
+              .replace(/\./g, '/')
+              .replace(/-/g, '');
             const trKey = `D${market}${ticker}`;
             const message = JSON.stringify({
               header: {
