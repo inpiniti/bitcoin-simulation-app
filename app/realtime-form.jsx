@@ -1,7 +1,5 @@
 ﻿/**
  * 실시간 매매 등록/수정 화면
- * router.push(''/realtime-form'')           → 신규 등록
- * router.push(''/realtime-form'', { id, …}) → 수정
  */
 import { useState, useEffect } from 'react';
 import {
@@ -15,12 +13,13 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
+  Platform,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { tdsDark, tdsColors } from '../constants/tdsColors';
 import { BottomSheet } from '../components/tds/BottomSheet';
-import { createRealtimeTrade, updateRealtimeTrade, deleteRealtimeTrade, fetchRealtimeTrades } from '../lib/realtimeApi';
+import { createRealtimeTrade, updateRealtimeTrade, deleteRealtimeTrade } from '../lib/realtimeApi';
 import { fetchCurrentPrice } from '../lib/kisApi';
 
 const MARKETS = [
@@ -33,28 +32,24 @@ const MARKETS = [
 
 const DEFAULT_FORM = {
   ticker: '',
-  market: 'NYS',
+  market: 'NAS',
   gap: 1,
   base_price: 0,
   quantity: 0,
   is_active: true,
 };
 
-function SelectField({ label, value, placeholder, onPress, hasError = false, disabled = false }) {
+function SelectField({ label, value, placeholder, onPress, disabled = false }) {
   return (
     <>
       <Text style={styles.fieldLabel}>{label}</Text>
       <TouchableOpacity
-        style={[
-          styles.selectField,
-          hasError && styles.selectFieldError,
-          disabled && styles.selectFieldDisabled,
-        ]}
+        style={[styles.selectField, disabled && styles.selectFieldDisabled]}
         onPress={onPress}
         disabled={disabled}
         activeOpacity={0.7}
       >
-        <Text style={[styles.selectFieldText, !value && styles.selectFieldPlaceholder]} numberOfLines={1}>
+        <Text style={[styles.selectFieldText, !value && styles.selectFieldPlaceholder]}>
           {value || placeholder}
         </Text>
         <Ionicons name="chevron-down" size={18} color={tdsDark.textTertiary} />
@@ -78,18 +73,18 @@ export default function RealtimeFormScreen() {
       setForm({
         id: params.id,
         ticker: params.ticker || '',
-        market: params.market || 'NYS',
+        market: params.market || 'NAS',
         gap: parseInt(params.gap) || 1,
         base_price: parseFloat(params.base_price) || 0,
         quantity: parseInt(params.quantity) || 0,
         is_active: params.is_active !== 'false',
       });
     }
-  }, []);
+  }, [isEdit, params]);
 
   const handleFetchPrice = async () => {
-    if (!form.ticker || !form.market) {
-      Alert.alert('알림', '종목과 시장을 선택해주세요');
+    if (!form.ticker.trim()) {
+      Alert.alert('알림', '종목을 입력해주세요');
       return;
     }
 
@@ -98,10 +93,10 @@ export default function RealtimeFormScreen() {
     setLoadingPrice(false);
 
     if (error) {
-      Alert.alert('오류', error.message || '현재가 조회 실패');
-    } else {
+      Alert.alert('오류', error.message || '현재가 조회 실패\n\n환경변수 확인:\nEXPO_PUBLIC_KIS_APPKEY\nEXPO_PUBLIC_KIS_APPSECRET\nEXPO_PUBLIC_KIS_ACCESS_TOKEN');
+    } else if (lastPrice) {
       setForm({ ...form, base_price: lastPrice });
-      Alert.alert('성공', `현재가: ${ lastPrice.toFixed(2) }`);
+      Alert.alert('성공', `현재가: $${lastPrice.toFixed(2)}`);
     }
   };
 
@@ -131,7 +126,7 @@ export default function RealtimeFormScreen() {
     setSaving(true);
     try {
       const data = {
-        ticker: form.ticker,
+        ticker: form.ticker.toUpperCase(),
         market: form.market,
         gap: form.gap,
         base_price: form.base_price,
@@ -187,14 +182,22 @@ export default function RealtimeFormScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: tdsDark.bgPrimary }}>
-      <ScrollView style={{ flex: 1, padding: 16 }} contentContainerStyle={{ paddingBottom: 100 }}>
-        {/* 헤더 */}
-        <View style={{ marginBottom: 24 }}>
+      {/* 헤더 */}
+      <View style={styles.header}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backButton}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Ionicons name="chevron-back" size={24} color={tdsDark.textPrimary} />
+        </TouchableOpacity>
+        <View style={{ flex: 1 }}>
           <Text style={styles.headerEyebrow}>설정</Text>
-          <Text style={styles.headerTitle}>{isEdit ? '실시간 매매 수정' : '실시간 매매 등록'}</Text>
-          <Text style={styles.headerSub}>조건을 설정해 자동 매매를 준비해요</Text>
+          <Text style={styles.headerTitle}>{isEdit ? '수정' : '등록'}</Text>
         </View>
+      </View>
 
+      <ScrollView style={{ flex: 1, padding: 16 }} contentContainerStyle={{ paddingBottom: 100 }}>
         {/* 종목 입력 */}
         <View style={{ marginBottom: 20 }}>
           <Text style={styles.fieldLabel}>종목 (티커)</Text>
@@ -211,16 +214,18 @@ export default function RealtimeFormScreen() {
         </View>
 
         {/* 시장 선택 */}
-        <SelectField
-          label="시장"
-          value={marketLabel}
-          placeholder="시장 선택"
-          onPress={() => setPickerKey('market')}
-        />
+        <View style={{ marginBottom: 20 }}>
+          <SelectField
+            label="시장"
+            value={marketLabel}
+            placeholder="시장 선택"
+            onPress={() => setPickerKey('market')}
+          />
+        </View>
 
         {/* 현재가 자동 조회 */}
-        <View style={{ marginBottom: 20, marginTop: 20 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={{ marginBottom: 20 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
             <Text style={styles.fieldLabel}>기준가</Text>
             <TouchableOpacity
               style={styles.priceButton}
@@ -333,9 +338,15 @@ export default function RealtimeFormScreen() {
                 setPickerKey(null);
               }}
             >
-              <Text style={[styles.bottomSheetOptionText, form.market === market.key && styles.bottomSheetOptionSelected]}>
+              <Text style={[
+                styles.bottomSheetOptionText,
+                form.market === market.key && styles.bottomSheetOptionSelected
+              ]}>
                 {market.label}
               </Text>
+              {form.market === market.key && (
+                <Ionicons name="checkmark" size={20} color={tdsColors.blue500} />
+              )}
             </TouchableOpacity>
           ))}
         </View>
@@ -345,21 +356,27 @@ export default function RealtimeFormScreen() {
 }
 
 const styles = StyleSheet.create({
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: tdsDark.border,
+    gap: 12,
+  },
+  backButton: {
+    padding: 4,
+  },
   headerEyebrow: {
     fontSize: 12,
     fontWeight: '600',
     color: tdsColors.blue500,
-    marginBottom: 4,
   },
   headerTitle: {
-    fontSize: 24,
+    fontSize: 18,
     fontWeight: '700',
     color: tdsDark.textPrimary,
-    marginBottom: 4,
-  },
-  headerSub: {
-    fontSize: 14,
-    color: tdsDark.textSecondary,
   },
   fieldLabel: {
     fontSize: 14,
@@ -380,7 +397,6 @@ const styles = StyleSheet.create({
     height: 48,
     fontSize: 16,
     color: tdsDark.textPrimary,
-    flex: 1,
   },
   selectField: {
     backgroundColor: tdsDark.bgCard,
@@ -392,7 +408,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     borderWidth: 1,
     borderColor: tdsDark.border,
-    marginBottom: 20,
   },
   selectFieldText: {
     fontSize: 16,
@@ -401,9 +416,6 @@ const styles = StyleSheet.create({
   },
   selectFieldPlaceholder: {
     color: tdsDark.textTertiary,
-  },
-  selectFieldError: {
-    borderColor: tdsColors.red500,
   },
   selectFieldDisabled: {
     opacity: 0.5,
@@ -466,6 +478,9 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   bottomSheetOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: tdsDark.border,
