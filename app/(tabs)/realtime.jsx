@@ -32,6 +32,11 @@ import {
 
 const KIS_WS_URL = 'ws://ops.koreainvestment.com:21000';
 
+// BRK-B ↔ BRK/B 같은 클래스 종목 매칭을 위해 양쪽에서 - / 제거 후 비교
+function normalizeTicker(t) {
+  return String(t || '').toUpperCase().replace(/[-/]/g, '');
+}
+
 function TradeRow({ item, isLast, onPress, onToggle, isDetected }) {
   const statusBadgeColor = item.is_active ? 'blue' : 'grey';
   const detectedBorderColor = isDetected ? tdsColors.red600 : 'transparent';
@@ -155,8 +160,9 @@ export default function RealtimeScreen() {
       const symb = (fields[1] || '').toUpperCase();
       if (!symb) return;
 
+      const normSymb = normalizeTicker(symb);
       const trade = tradesRef.current.find(
-        (t) => (t.ticker || '').toUpperCase() === symb
+        (t) => normalizeTicker(t.ticker) === normSymb
       );
       if (!trade) return;
 
@@ -175,7 +181,7 @@ export default function RealtimeScreen() {
         ws.onopen = () => {
           for (const trade of activeTrades) {
             const market = (trade.market || '').toUpperCase();
-            const ticker = (trade.ticker || '').toUpperCase();
+            const ticker = (trade.ticker || '').toUpperCase().replace(/-/g, '/');
             const trKey = `D${market}${ticker}`;
             const message = JSON.stringify({
               header: {
