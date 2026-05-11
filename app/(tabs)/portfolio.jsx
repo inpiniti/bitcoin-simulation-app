@@ -159,8 +159,10 @@ export default function PortfolioScreen() {
     ];
 
     const displayItems = proposedPortfolio.slice(0, 10);
-    const othersWeight = proposedPortfolio.slice(10).reduce((sum, s) => sum + s.weightPercent, 0);
     const cashWeight = cashRatio * 100;
+    // 100%를 정확히 채우도록 나머지(상위 11+ 종목)는 잔여분으로 계산
+    const displayWeightSum = displayItems.reduce((sum, s) => sum + s.weightPercent, 0);
+    const othersWeight = Math.max(0, 100 - displayWeightSum - cashWeight);
 
     return (
       <View style={styles.chartSection}>
@@ -301,8 +303,8 @@ export default function PortfolioScreen() {
                   setShowActionSheet(true);
                 }}
                 left={<View style={styles.rankWrap}><Text style={styles.rankText}>{idx + 1}</Text><LogoBadge name={item.name} ticker={item.stock} size={40} /></View>}
-                title={item.name}
-                subtitle={`${item.stock} · $${item.close}`}
+                title={`${item.stock}${item.person_count ? `  · 투자자 ${item.person_count}명` : ''}`}
+                subtitle={`${item.name || item.stock}${item.close ? ` · $${item.close}` : ''}`}
                 right={
                   <View style={styles.rightBlock}>
                     <Text style={styles.suggestedQtyText}>{formatNumber(item.suggestedQty)}주</Text>
