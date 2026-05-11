@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { Button } from '../../components/tds/Button';
 import { tdsDark, tdsColors } from '../../constants/tdsColors';
 import { ListRow } from '../../components/tds/ListRow';
 import { LogoBadge } from '../../components/tds/LogoBadge';
@@ -285,83 +286,84 @@ export default function PortfolioScreen() {
         ) : (
           <View style={styles.listContainer}>
             {proposedPortfolio.map((item, idx) => (
-              <TouchableOpacity
+              <ListRow
                 key={item.stock}
                 onPress={() => {
                   setSelectedStock(item);
                   setShowActionSheet(true);
                 }}
-                activeOpacity={0.7}
-              >
-                <ListRow
-                  left={<View style={styles.rankWrap}><Text style={styles.rankText}>{idx + 1}</Text><LogoBadge name={item.name} ticker={item.stock} size={40} /></View>}
-                  title={item.name}
-                  subtitle={`${item.stock} · $${item.close}`}
-                  right={
-                    <View style={styles.rightBlock}>
-                      <Text style={styles.suggestedQtyText}>{formatNumber(item.suggestedQty)}주</Text>
-                      <View style={styles.weightBarWrap}>
-                        <View style={[styles.weightBar, { width: `${item.weightPercent}%` }]} />
-                        <Text style={styles.weightPercentText}>{item.weightPercent.toFixed(1)}%</Text>
-                      </View>
+                left={<View style={styles.rankWrap}><Text style={styles.rankText}>{idx + 1}</Text><LogoBadge name={item.name} ticker={item.stock} size={40} /></View>}
+                title={item.name}
+                subtitle={`${item.stock} · $${item.close}`}
+                right={
+                  <View style={styles.rightBlock}>
+                    <Text style={styles.suggestedQtyText}>{formatNumber(item.suggestedQty)}주</Text>
+                    <View style={styles.weightBarWrap}>
+                      <View style={[styles.weightBar, { width: `${item.weightPercent}%` }]} />
+                      <Text style={styles.weightPercentText}>{item.weightPercent.toFixed(1)}%</Text>
                     </View>
-                  }
-                />
-              </TouchableOpacity>
+                  </View>
+                }
+              />
             ))}
           </View>
         )}
       </ScrollView>
 
       {/* 액션 시트 */}
-      <BottomSheet visible={showActionSheet} onClose={() => setShowActionSheet(false)}>
-        <View style={{ paddingHorizontal: 16, paddingBottom: 20 }}>
-          <Text style={styles.actionSheetTitle}>
-            {selectedStock?.stock} {selectedStock?.name}
-          </Text>
-          <TouchableOpacity
-            style={styles.actionSheetOption}
-            onPress={() => {
-              setShowActionSheet(false);
-              // TODO: 매수 기능
-            }}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="arrow-down-circle-outline" size={18} color={tdsColors.blue500} />
-            <Text style={styles.actionSheetOptionText}>매수</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.actionSheetOption}
-            onPress={() => {
-              setShowActionSheet(false);
-              // TODO: 매도 기능
-            }}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="arrow-up-circle-outline" size={18} color={tdsColors.red500} />
-            <Text style={[styles.actionSheetOptionText, { color: tdsColors.red500 }]}>매도</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.actionSheetOption}
-            onPress={() => {
-              setShowActionSheet(false);
-              if (selectedStock) {
-                router.push({
-                  pathname: '/realtime-form',
-                  params: {
-                    ticker: selectedStock.stock,
-                    market: 'NAS',
-                    auto_fetch_price: 'true',
-                  },
-                });
-              }
-            }}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="rocket-outline" size={18} color={tdsColors.blue500} />
-            <Text style={styles.actionSheetOptionText}>실시간 등록</Text>
-          </TouchableOpacity>
-        </View>
+      <BottomSheet
+        open={showActionSheet}
+        onClose={() => setShowActionSheet(false)}
+        title={selectedStock ? `${selectedStock.stock}` : ''}
+        cta={
+          <View style={styles.sheetCtaRow}>
+            <Button onPress={() => setShowActionSheet(false)} variant="weak" style={{ flex: 1 }}>닫기</Button>
+            <Button
+              onPress={() => {
+                setShowActionSheet(false);
+                if (selectedStock) {
+                  router.push({
+                    pathname: '/realtime-form',
+                    params: {
+                      ticker: selectedStock.stock,
+                      market: 'NAS',
+                      auto_fetch_price: 'true',
+                    },
+                  });
+                }
+              }}
+              style={{ flex: 1 }}
+            >
+              실시간 등록
+            </Button>
+          </View>
+        }
+      >
+        {selectedStock && (
+          <View style={{ paddingBottom: 20 }}>
+            <Text style={styles.sheetSubtitle}>{selectedStock.name}</Text>
+            <TouchableOpacity
+              style={styles.actionOption}
+              onPress={() => {
+                setShowActionSheet(false);
+              }}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="arrow-down-circle-outline" size={20} color={tdsColors.blue500} />
+              <Text style={styles.actionOptionText}>매수</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.actionOption}
+              onPress={() => {
+                setShowActionSheet(false);
+              }}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="arrow-up-circle-outline" size={20} color={tdsColors.red500} />
+              <Text style={[styles.actionOptionText, { color: tdsColors.red500 }]}>매도</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </BottomSheet>
     </SafeAreaView>
   );
@@ -488,13 +490,9 @@ const styles = StyleSheet.create({
   weightBar: { height: 4, backgroundColor: tdsColors.blue500, borderRadius: 2, marginRight: 8, maxWidth: 60 },
   weightPercentText: { fontSize: 12, color: tdsColors.blue600, fontWeight: '700' },
 
-  actionSheetTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: tdsDark.textPrimary,
-    marginBottom: 12,
-  },
-  actionSheetOption: {
+  sheetCtaRow: { flexDirection: 'row', gap: 12, marginTop: 10 },
+  sheetSubtitle: { fontSize: 13, color: tdsDark.textTertiary, marginBottom: 16 },
+  actionOption: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
@@ -502,8 +500,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: tdsDark.border,
   },
-  actionSheetOptionText: {
-    fontSize: 14,
+  actionOptionText: {
+    fontSize: 15,
     fontWeight: '600',
     color: tdsColors.blue500,
   },
