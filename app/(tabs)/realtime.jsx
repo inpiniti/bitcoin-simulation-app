@@ -148,7 +148,9 @@ export default function RealtimeScreen() {
         )
         .subscribe((status) => {
           if (status === 'SUBSCRIBED') {
-            console.log('[Realtime] 구독 성공');
+            Alert.alert('✅ Realtime 연결', '실시간 매매 변경 감지 준비 완료');
+          } else {
+            Alert.alert('⚠️ 연결 상태', `상태: ${status}`);
           }
         });
     } catch (e) {
