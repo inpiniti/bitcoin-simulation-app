@@ -28,6 +28,14 @@ import useStore from '../../store/useStore';
 
 // ─── 유틸리티 ───────────────────────────────────────────────────────────────
 
+function getMarketFromExchange(exchange) {
+  if (!exchange) return 'NAS'; // 기본값
+  const upperEx = exchange.toUpperCase();
+  if (upperEx.includes('NYSE') || upperEx === 'NYS') return 'NYS';
+  if (upperEx.includes('NASDAQ') || upperEx === 'NAS') return 'NAS';
+  return 'NAS'; // 기본값
+}
+
 function formatNumber(val) {
   return val.toLocaleString('ko-KR');
 }
@@ -322,11 +330,12 @@ export default function PortfolioScreen() {
               onPress={() => {
                 setShowActionSheet(false);
                 if (selectedStock) {
+                  const market = getMarketFromExchange(selectedStock.exchange);
                   router.push({
                     pathname: '/realtime-form',
                     params: {
                       ticker: selectedStock.stock,
-                      market: 'NAS',
+                      market: market,
                       auto_fetch_price: 'true',
                     },
                   });

@@ -1,7 +1,7 @@
 ﻿/**
  * 실시간 매매 등록/수정 화면
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   SafeAreaView,
   ScrollView,
@@ -61,6 +61,7 @@ function SelectField({ label, value, placeholder, onPress, disabled = false }) {
 export default function RealtimeFormScreen() {
   const params = useLocalSearchParams();
   const isEdit = !!params.id;
+  const autoFetchedRef = useRef(false);
 
   const [form, setForm] = useState(DEFAULT_FORM);
   const [saving, setSaving] = useState(false);
@@ -79,6 +80,7 @@ export default function RealtimeFormScreen() {
         quantity: parseInt(params.quantity) || 0,
         is_active: params.is_active !== 'false',
       });
+      autoFetchedRef.current = true;
     } else if (params.ticker) {
       // 포트폴리오/뉴스에서 ticker 전달받은 경우
       setForm({
@@ -89,20 +91,33 @@ export default function RealtimeFormScreen() {
         quantity: 0,
         is_active: true,
       });
-      // auto_fetch_price 플래그가 있으면 현재가 자동 조회
-      if (params.auto_fetch_price === 'true') {
-        setLoadingPrice(true);
-      }
     }
-  }, [isEdit, params]);
+  }, []);
 
-  // 초기 로드 시 자동 현재가 조회
+  // 초기 로드 시 자동 현재가 조회 (한 번만)
   useEffect(() => {
-    if (loadingPrice && form.ticker.trim() && !isEdit && params.auto_fetch_price === 'true') {
-      const timer = setTimeout(() => handleFetchPrice(), 500);
+    if (
+      params.ticker &&
+      params.auto_fetch_price === 'true' &&
+      !autoFetchedRef.current &&
+      !isEdit &&
+      form.ticker
+    ) {
+      autoFetchedRef.current = true;
+      const timer = setTimeout(() => {
+        (async () => {
+          setLoadingPrice(true);
+          const { lastPrice, error } = await fetchCurrentPrice(form.ticker, form.market);
+          setLoadingPrice(false);
+
+          if (!error && lastPrice) {
+            setForm(prev => ({ ...prev, base_price: lastPrice }));
+          }
+        })();
+      }, 500);
       return () => clearTimeout(timer);
     }
-  }, [loadingPrice, form.ticker, isEdit, params.auto_fetch_price]);
+  }, []);
 
   const handleFetchPrice = async () => {
     if (!form.ticker.trim()) {
@@ -347,15 +362,14 @@ export default function RealtimeFormScreen() {
       </View>
 
       {/* 시장 선택 바텀시트 */}
-      <BottomSheet visible={pickerKey === 'market'} onClose={() => setPickerKey(null)}>
-        <View style={{ paddingHorizontal: 16, paddingBottom: 20 }}>
-          <Text style={styles.bottomSheetTitle}>시장 선택</Text>
+      <BottomSheet open={pickerKey === 'market'} onClose={() => setPickerKey(null)}>
+        <View style={{ paddingBottom: 20 }}>
           {MARKETS.map(market => (
             <TouchableOpacity
               key={market.key}
               style={styles.bottomSheetOption}
               onPress={() => {
-                setForm({ ...form, market: market.key });
+                setForm(prev => ({ ...prev, market: market.key }));
                 setPickerKey(null);
               }}
             >

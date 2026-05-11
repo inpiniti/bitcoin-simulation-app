@@ -43,6 +43,14 @@ import { fetchSettings } from '../../lib/tradingApi';
 
 const DAY_LABELS = ['일', '월', '화', '수', '목', '금', '토'];
 
+function getMarketFromExchange(exchange) {
+  if (!exchange) return 'NAS'; // 기본값
+  const upperEx = exchange.toUpperCase();
+  if (upperEx.includes('NYSE') || upperEx === 'NYS') return 'NYS';
+  if (upperEx.includes('NASDAQ') || upperEx === 'NAS') return 'NAS';
+  return 'NAS'; // 기본값
+}
+
 function toDateStr(d) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -818,11 +826,12 @@ export default function NewsScreen() {
               onPress={() => {
                 setShowActionSheet(false);
                 if (selectedStock) {
+                  const market = getMarketFromExchange(selectedStock.exchange);
                   router.push({
                     pathname: '/realtime-form',
                     params: {
                       ticker: selectedStock.ticker,
-                      market: 'NAS',
+                      market: market,
                       auto_fetch_price: 'true',
                     },
                   });
