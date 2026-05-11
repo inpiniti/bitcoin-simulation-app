@@ -64,12 +64,12 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="schedule"
+        name="realtime"
         options={{
-          title: '예약',
+          title: '실시간',
           tabBarIcon: ({ focused, size }) => (
             <Ionicons
-              name="time"
+              name="rocket"
               color={focused ? tdsColors.blue700 : tdsColors.grey400}
               size={size}
             />
