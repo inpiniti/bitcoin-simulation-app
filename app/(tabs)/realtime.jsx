@@ -1,5 +1,11 @@
-﻿/**
- * 실시간 매매 탭 — 실시간 매매 설정 목록
+/**
+ * 실시간 매매 탭 — KIS WebSocket으로 실시간 가격 감지
+ *
+ * 동작:
+ * 1. Supabase에서 종목 목록 + WebSocket 키 가져옴
+ * 2. KIS WebSocket(ws://ops.koreainvestment.com:21000) 직접 연결
+ * 3. 활성 종목들 HDFSCNT0 구독 (tr_key = D + market + ticker)
+ * 4. 가격 메시지 수신 시 해당 카드 빨간 테두리 3초 표시
  */
 import { useState, useCallback, useEffect, useRef } from 'react';
 import {
@@ -16,38 +22,38 @@ import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { tdsDark, tdsColors } from '../../constants/tdsColors';
 import { Badge } from '../../components/tds/Badge';
-import { fetchRealtimeTrades, toggleRealtimeTrade } from '../../lib/realtimeApi';
-import { supabase } from '../../lib/supabaseClient';
+import {
+  fetchRealtimeTrades,
+  toggleRealtimeTrade,
+  fetchWebSocketKey,
+} from '../../lib/realtimeApi';
+
+const KIS_WS_URL = 'ws://ops.koreainvestment.com:21000';
 
 function TradeRow({ item, isLast, onPress, onToggle, isDetected }) {
   const statusBadgeColor = item.is_active ? 'blue' : 'grey';
-  const detectedBorderColor = isDetected ? tdsColors.blue500 : 'transparent';
+  const detectedBorderColor = isDetected ? tdsColors.red600 : 'transparent';
 
   return (
     <TouchableOpacity
       style={[
         styles.tradeRow,
         !isLast && styles.tradeRowBorder,
-        isDetected && { borderWidth: 2, borderColor: detectedBorderColor }
+        isDetected && { borderWidth: 2, borderColor: detectedBorderColor },
       ]}
       onPress={() => onPress(item)}
       activeOpacity={0.7}
     >
       <View style={styles.tradeIcon}>
-        <Ionicons
-          name="rocket-outline"
-          size={18}
-          color={tdsColors.blue500}
-        />
+        <Ionicons name="rocket-outline" size={18} color={tdsColors.blue500} />
       </View>
       <View style={styles.tradeInfo}>
         <Text style={styles.tradeTicker}>{item.ticker}</Text>
-        <Text style={styles.tradeMeta}>{item.market} · ${item.base_price.toFixed(2)} · {item.gap}% · {item.quantity}주</Text>
+        <Text style={styles.tradeMeta}>
+          {item.market} · ${item.base_price.toFixed(2)} · {item.gap}% · {item.quantity}주
+        </Text>
       </View>
-      <TouchableOpacity
-        onPress={() => onToggle(item)}
-        activeOpacity={0.7}
-      >
+      <TouchableOpacity onPress={() => onToggle(item)} activeOpacity={0.7}>
         <Badge
           color={statusBadgeColor}
           size="small"
@@ -75,102 +81,193 @@ export default function RealtimeScreen() {
   const [trades, setTrades] = useState([]);
   const [loading, setLoading] = useState(true);
   const [detectedIds, setDetectedIds] = useState(new Set());
-  const subscriptionRef = useRef(null);
-  const detectionTimeoutRef = useRef(null);
+
+  const wsRef = useRef(null);
+  const tradesRef = useRef([]);
+  const detectionTimeoutsRef = useRef({});
+
+  // 최신 trades를 ref에 동기화 (WS 콜백에서 참조용)
+  useEffect(() => {
+    tradesRef.current = trades;
+  }, [trades]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const { data, error } = await fetchRealtimeTrades();
       if (error) {
-        Alert.alert('데이터 조회 실패', `에러: ${error.message || JSON.stringify(error)}`);
+        Alert.alert('데이터 조회 실패', error.message || JSON.stringify(error));
         setTrades([]);
         return;
       }
       setTrades(data || []);
     } catch (e) {
-      Alert.alert('예외 발생', `데이터 로드 중 오류:\n\n${e.message || '알 수 없는 오류'}`);
+      Alert.alert('예외 발생', e.message || '알 수 없는 오류');
       setTrades([]);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // Supabase Realtime 구독: 실시간 매매 업데이트 감지
-  const setupSubscription = useCallback(() => {
-    try {
-      if (subscriptionRef.current) {
-        subscriptionRef.current.unsubscribe();
-      }
+  // 가격 감지 시 해당 trade에 빨간 테두리 3초
+  const flashDetection = useCallback((tradeId) => {
+    setDetectedIds((prev) => {
+      const next = new Set(prev);
+      next.add(tradeId);
+      return next;
+    });
 
-      subscriptionRef.current = supabase
-        .channel('realtime_trading_changes')
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'realtime_trading',
-          },
-          (payload) => {
-            // 감지된 종목 표시 (3초간 테두리 표시)
-            const tradeId = payload.new?.id || payload.old?.id;
-            if (tradeId) {
-              setDetectedIds((prev) => new Set(prev).add(tradeId));
-
-              if (detectionTimeoutRef.current) {
-                clearTimeout(detectionTimeoutRef.current);
-              }
-
-              detectionTimeoutRef.current = setTimeout(() => {
-                setDetectedIds((prev) => {
-                  const next = new Set(prev);
-                  next.delete(tradeId);
-                  return next;
-                });
-              }, 3000);
-            }
-
-            // 데이터 업데이트 (기준가, 수량 등 변경)
-            setTrades((prevTrades) =>
-              prevTrades.map((t) =>
-                t.id === tradeId
-                  ? {
-                      ...t,
-                      base_price: payload.new?.base_price ?? t.base_price,
-                      quantity: payload.new?.quantity ?? t.quantity,
-                      updated_at: payload.new?.updated_at ?? t.updated_at,
-                    }
-                  : t
-              )
-            );
-          }
-        )
-        .subscribe((status) => {
-          if (status === 'SUBSCRIBED') {
-            Alert.alert('✅ Realtime 연결', '실시간 매매 변경 감지 준비 완료');
-          } else {
-            Alert.alert('⚠️ 연결 상태', `상태: ${status}`);
-          }
-        });
-    } catch (e) {
-      Alert.alert('구독 에러', `Realtime 구독 설정 실패:\n\n${e.message || '알 수 없는 오류'}`);
+    if (detectionTimeoutsRef.current[tradeId]) {
+      clearTimeout(detectionTimeoutsRef.current[tradeId]);
     }
+    detectionTimeoutsRef.current[tradeId] = setTimeout(() => {
+      setDetectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(tradeId);
+        return next;
+      });
+      delete detectionTimeoutsRef.current[tradeId];
+    }, 3000);
   }, []);
 
+  // KIS WS 메시지 파싱
+  // 형식: 0|HDFSCNT0|001|RSYM^SYMB^ZDIV^...
+  const handleWsMessage = useCallback(
+    (raw) => {
+      if (typeof raw !== 'string') return;
+
+      // JSON 응답 (구독 등록 성공/실패 등)
+      if (raw.startsWith('{')) return;
+
+      const parts = raw.split('|');
+      if (parts.length < 4) return;
+
+      const trId = parts[1];
+      if (trId !== 'HDFSCNT0') return;
+
+      const dataStr = parts[3];
+      const fields = dataStr.split('^');
+      // SYMB는 두 번째 필드(인덱스 1)
+      const symb = (fields[1] || '').toUpperCase();
+      if (!symb) return;
+
+      const trade = tradesRef.current.find(
+        (t) => (t.ticker || '').toUpperCase() === symb
+      );
+      if (!trade) return;
+
+      flashDetection(trade.id);
+    },
+    [flashDetection]
+  );
+
+  // KIS WebSocket 연결 + 구독
+  const connectAndSubscribe = useCallback(
+    (approvalKey, activeTrades) => {
+      try {
+        const ws = new WebSocket(KIS_WS_URL, 'livedata');
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+          for (const trade of activeTrades) {
+            const market = (trade.market || '').toUpperCase();
+            const ticker = (trade.ticker || '').toUpperCase();
+            const trKey = `D${market}${ticker}`;
+            const message = JSON.stringify({
+              header: {
+                approval_key: approvalKey,
+                tr_type: '1',
+                custtype: 'P',
+                'content-type': 'utf-8',
+              },
+              body: {
+                tr_id: 'HDFSCNT0',
+                tr_key: trKey,
+              },
+            });
+            try {
+              ws.send(message);
+            } catch (e) {
+              Alert.alert('구독 전송 실패', `${trade.ticker}: ${e.message}`);
+            }
+          }
+          Alert.alert(
+            '✅ KIS WS 연결',
+            `${activeTrades.length}개 종목 구독 요청 완료`
+          );
+        };
+
+        ws.onmessage = (event) => {
+          handleWsMessage(event.data);
+        };
+
+        ws.onerror = (e) => {
+          Alert.alert('WS 에러', e?.message || '연결 오류');
+        };
+
+        ws.onclose = () => {
+          wsRef.current = null;
+        };
+      } catch (e) {
+        Alert.alert('WS 연결 실패', e.message || '알 수 없는 오류');
+      }
+    },
+    [handleWsMessage]
+  );
+
+  // 마운트 시: trades 로드 → key 조회 → WS 연결
   useEffect(() => {
-    load();
-    setupSubscription();
+    let mounted = true;
+
+    (async () => {
+      // 1. trades 로드
+      setLoading(true);
+      const { data: tradesData, error: tradesErr } = await fetchRealtimeTrades();
+      if (!mounted) return;
+      if (tradesErr) {
+        Alert.alert('데이터 조회 실패', tradesErr.message || JSON.stringify(tradesErr));
+        setTrades([]);
+        setLoading(false);
+        return;
+      }
+      const list = tradesData || [];
+      setTrades(list);
+      tradesRef.current = list;
+      setLoading(false);
+
+      // 2. 활성 종목 없으면 WS 연결 안 함
+      const activeTrades = list.filter((t) => t.is_active);
+      if (activeTrades.length === 0) return;
+
+      // 3. WS 키 조회
+      const { data: keyData, error: keyErr } = await fetchWebSocketKey();
+      if (!mounted) return;
+      if (keyErr || !keyData?.approval_key) {
+        Alert.alert(
+          'WS 키 없음',
+          keyErr?.message || 'WebSocket 키가 없습니다. 다시 로그인 해주세요.'
+        );
+        return;
+      }
+
+      // 4. WS 연결 + 구독
+      connectAndSubscribe(keyData.approval_key, activeTrades);
+    })();
 
     return () => {
-      if (subscriptionRef.current) {
-        subscriptionRef.current.unsubscribe();
+      mounted = false;
+      if (wsRef.current) {
+        try {
+          wsRef.current.close();
+        } catch (_e) {
+          // ignore
+        }
+        wsRef.current = null;
       }
-      if (detectionTimeoutRef.current) {
-        clearTimeout(detectionTimeoutRef.current);
-      }
+      Object.values(detectionTimeoutsRef.current).forEach(clearTimeout);
+      detectionTimeoutsRef.current = {};
     };
-  }, []);
+  }, [connectAndSubscribe]);
 
   useFocusEffect(
     useCallback(() => {
@@ -198,7 +295,7 @@ export default function RealtimeScreen() {
     if (error) {
       Alert.alert('오류', error.message || '상태 변경 실패');
     } else {
-      setTrades(trades.map(t => t.id === item.id ? { ...t, is_active: !t.is_active } : t));
+      setTrades(trades.map((t) => (t.id === item.id ? { ...t, is_active: !t.is_active } : t)));
     }
   };
 
@@ -209,7 +306,7 @@ export default function RealtimeScreen() {
         <View>
           <Text style={styles.headerEyebrow}>매매 · 자동</Text>
           <Text style={styles.headerTitle}>실시간 매매</Text>
-          <Text style={styles.headerSub}>조건을 만족하면 자동으로 매매해요</Text>
+          <Text style={styles.headerSub}>가격 변동이 감지되면 카드에 빨간 테두리가 표시돼요</Text>
         </View>
       </View>
 
