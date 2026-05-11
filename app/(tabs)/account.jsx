@@ -159,6 +159,7 @@ export default function AccountScreen() {
             ]}
             activeTab={currency}
             onTabChange={setCurrency}
+            style={styles.headerToggle}
           />
         </View>
 
@@ -272,6 +273,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   headerEyebrow: { fontSize: 12, color: tdsDark.textTertiary, marginBottom: 2 },
+  headerToggle: {
+    width: 140,
+    marginHorizontal: 0,
+    marginVertical: 0,
+    flexShrink: 0,
+  },
   headerTitle: {
     fontSize: 28,
     fontWeight: '800',
