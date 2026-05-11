@@ -1,7 +1,7 @@
 ﻿/**
  * 실시간 매매 탭 — 실시간 매매 설정 목록
  */
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   SafeAreaView,
   ScrollView,
@@ -17,13 +17,19 @@ import { Ionicons } from '@expo/vector-icons';
 import { tdsDark, tdsColors } from '../../constants/tdsColors';
 import { Badge } from '../../components/tds/Badge';
 import { fetchRealtimeTrades, toggleRealtimeTrade } from '../../lib/realtimeApi';
+import { supabase } from '../../lib/supabaseClient';
 
-function TradeRow({ item, isLast, onPress, onToggle }) {
+function TradeRow({ item, isLast, onPress, onToggle, isDetected }) {
   const statusBadgeColor = item.is_active ? 'blue' : 'grey';
+  const detectedBorderColor = isDetected ? tdsColors.blue500 : 'transparent';
 
   return (
     <TouchableOpacity
-      style={[styles.tradeRow, !isLast && styles.tradeRowBorder]}
+      style={[
+        styles.tradeRow,
+        !isLast && styles.tradeRowBorder,
+        isDetected && { borderWidth: 2, borderColor: detectedBorderColor }
+      ]}
       onPress={() => onPress(item)}
       activeOpacity={0.7}
     >
@@ -68,6 +74,9 @@ function EmptyState() {
 export default function RealtimeScreen() {
   const [trades, setTrades] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [detectedIds, setDetectedIds] = useState(new Set());
+  const subscriptionRef = useRef(null);
+  const detectionTimeoutRef = useRef(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -83,9 +92,71 @@ export default function RealtimeScreen() {
     }
   }, []);
 
+  // Supabase Realtime 구독: 실시간 매매 업데이트 감지
+  const setupSubscription = useCallback(() => {
+    if (subscriptionRef.current) {
+      supabase.removeChannel(subscriptionRef.current);
+    }
+
+    subscriptionRef.current = supabase
+      .channel('realtime_trading_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'realtime_trading',
+        },
+        (payload) => {
+          // 감지된 종목 표시 (3초간 테두리 표시)
+          const tradeId = payload.new?.id || payload.old?.id;
+          if (tradeId) {
+            setDetectedIds((prev) => new Set(prev).add(tradeId));
+
+            if (detectionTimeoutRef.current) {
+              clearTimeout(detectionTimeoutRef.current);
+            }
+
+            detectionTimeoutRef.current = setTimeout(() => {
+              setDetectedIds((prev) => {
+                const next = new Set(prev);
+                next.delete(tradeId);
+                return next;
+              });
+            }, 3000);
+          }
+
+          // 데이터 업데이트 (기준가, 수량 등 변경)
+          setTrades((prevTrades) =>
+            prevTrades.map((t) =>
+              t.id === tradeId
+                ? {
+                    ...t,
+                    base_price: payload.new?.base_price ?? t.base_price,
+                    quantity: payload.new?.quantity ?? t.quantity,
+                    updated_at: payload.new?.updated_at ?? t.updated_at,
+                  }
+                : t
+            )
+          );
+        }
+      )
+      .subscribe();
+  }, []);
+
   useEffect(() => {
     load();
-  }, [load]);
+    setupSubscription();
+
+    return () => {
+      if (subscriptionRef.current) {
+        supabase.removeChannel(subscriptionRef.current);
+      }
+      if (detectionTimeoutRef.current) {
+        clearTimeout(detectionTimeoutRef.current);
+      }
+    };
+  }, [load, setupSubscription]);
 
   useFocusEffect(
     useCallback(() => {
@@ -156,6 +227,7 @@ export default function RealtimeScreen() {
                   isLast={i === trades.length - 1}
                   onPress={handlePress}
                   onToggle={handleToggle}
+                  isDetected={detectedIds.has(trade.id)}
                 />
               ))}
             </View>

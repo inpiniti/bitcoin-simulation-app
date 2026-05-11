@@ -15,6 +15,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Button } from '../components/tds/Button';
 import { tdsColors, tdsDark } from '../constants/tdsColors';
 import { clearKisAuth, loginKis } from '../lib/kisApi';
+import { ensureWebSocketKey } from '../lib/realtimeApi';
 import useStore from '../store/useStore';
 
 const KIS_CREDENTIALS_KEY = 'kis.credentials.v1';
@@ -81,6 +82,12 @@ export default function LoginScreen() {
           appsecret: appsecret.trim(),
         }),
       );
+
+      // WebSocket 키 자동 발급 (로그인 후 백그라운드에서 실행)
+      ensureWebSocketKey(appkey.trim(), appsecret.trim()).catch((e) => {
+        console.warn('WebSocket 키 발급 실패:', e);
+        // 키 발급 실패해도 로그인 진행 (실시간 매매 사용 시에만 필요)
+      });
 
       startLoginSession({ accountNo: accountNo.trim() });
     } catch (e) {
