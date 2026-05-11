@@ -82,10 +82,14 @@ export default function RealtimeScreen() {
     setLoading(true);
     try {
       const { data, error } = await fetchRealtimeTrades();
-      if (error) throw new Error(error.message);
+      if (error) {
+        Alert.alert('데이터 조회 실패', `에러: ${error.message || JSON.stringify(error)}`);
+        setTrades([]);
+        return;
+      }
       setTrades(data || []);
     } catch (e) {
-      Alert.alert('오류', e.message || '데이터 로드 실패');
+      Alert.alert('예외 발생', `데이터 로드 중 오류:\n\n${e.message || '알 수 없는 오류'}`);
       setTrades([]);
     } finally {
       setLoading(false);
@@ -94,20 +98,21 @@ export default function RealtimeScreen() {
 
   // Supabase Realtime 구독: 실시간 매매 업데이트 감지
   const setupSubscription = useCallback(() => {
-    if (subscriptionRef.current) {
-      supabase.removeChannel(subscriptionRef.current);
-    }
+    try {
+      if (subscriptionRef.current) {
+        supabase.removeChannel(subscriptionRef.current);
+      }
 
-    subscriptionRef.current = supabase
-      .channel('realtime_trading_changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'realtime_trading',
-        },
-        (payload) => {
+      subscriptionRef.current = supabase
+        .channel('realtime_trading_changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'realtime_trading',
+          },
+          (payload) => {
           // 감지된 종목 표시 (3초간 테두리 표시)
           const tradeId = payload.new?.id || payload.old?.id;
           if (tradeId) {
@@ -142,6 +147,9 @@ export default function RealtimeScreen() {
         }
       )
       .subscribe();
+    } catch (e) {
+      Alert.alert('구독 에러', `Realtime 구독 설정 실패:\n\n${e.message || '알 수 없는 오류'}`);
+    }
   }, []);
 
   useEffect(() => {
