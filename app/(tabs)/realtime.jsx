@@ -162,13 +162,13 @@ export default function RealtimeScreen() {
 
     return () => {
       if (subscriptionRef.current) {
-        supabase.removeChannel(subscriptionRef.current);
+        subscriptionRef.current.unsubscribe();
       }
       if (detectionTimeoutRef.current) {
         clearTimeout(detectionTimeoutRef.current);
       }
     };
-  }, [load, setupSubscription]);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
