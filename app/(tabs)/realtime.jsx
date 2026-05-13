@@ -180,7 +180,9 @@ export default function RealtimeScreen() {
 
       const last = fields[11] || '0';
       const khms = fields[7] || '';
-      console.log(`[KIS WS] 가격 수신 - ${symb}: ${last} (${khms})`);
+      const mtyp = fields[25] || '1';
+      const mtypLabel = { '1': '장중', '2': '장전', '3': '장후' }[mtyp] || `MTYP=${mtyp}`;
+      console.log(`[KIS WS] 가격 수신 - ${symb}: ${last} (${khms}, ${mtypLabel})`);
 
       const normSymb = normalizeTicker(symb);
       const trade = tradesRef.current.find(
