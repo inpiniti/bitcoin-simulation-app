@@ -204,7 +204,7 @@ export default function RealtimeScreen() {
     (approvalKey, activeTrades) => {
       try {
         console.log(`[KIS WS] 연결 시도: ${KIS_WS_URL}`);
-        const ws = new WebSocket(KIS_WS_URL, 'livedata');
+        const ws = new WebSocket(KIS_WS_URL);
         wsRef.current = ws;
 
         ws.onopen = () => {
@@ -224,8 +224,10 @@ export default function RealtimeScreen() {
                 'content-type': 'utf-8',
               },
               body: {
-                tr_id: 'HDFSCNT0',
-                tr_key: trKey,
+                input: {
+                  tr_id: 'HDFSCNT0',
+                  tr_key: trKey,
+                }
               },
             });
             try {
