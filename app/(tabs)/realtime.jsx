@@ -1,10 +1,10 @@
 /**
- * 실시간 매매 탭 — KIS WebSocket으로 실시간 가격 감지
+ * 실시간 매매 탭
  *
  * 동작:
- * 1. Supabase에서 종목 목록 + WebSocket 키 가져옴
- * 2. KIS WebSocket(ws://ops.koreainvestment.com:21000) 직접 연결
- * 3. 활성 종목들 HDFSCNT0 구독 (tr_key = D + market + ticker)
+ * 1. Supabase에서 종목 목록 가져옴
+ * 2. 백엔드 WebSocket(/realtime/ws)에 연결 (KIS 직접 연결 제거)
+ * 3. 백엔드가 KIS에서 수신한 가격을 JSON으로 중계
  * 4. 가격 메시지 수신 시 해당 카드 빨간 테두리 3초 표시
  */
 import { useState, useCallback, useEffect, useRef } from 'react';
@@ -25,12 +25,14 @@ import { Badge } from '../../components/tds/Badge';
 import {
   fetchRealtimeTrades,
   toggleRealtimeTrade,
-  fetchWebSocketKey,
   fetchDetectionStatus,
   startDetection,
 } from '../../lib/realtimeApi';
 
-const KIS_WS_URL = 'ws://ops.koreainvestment.com:21000';
+const API_BASE =
+  process.env.EXPO_PUBLIC_API_BASE_URL ||
+  'https://younginpiniti-bitcoin-ai-backend.hf.space';
+const BACKEND_WS_URL = API_BASE.replace('https://', 'wss://').replace('http://', 'ws://') + '/realtime/ws';
 
 // 클래스 종목 매칭용: 점/슬래시/하이픈 모두 제거 후 비교
 // (DB: BRK-B / KIS 응답: BRK/B 또는 BRKB → 모두 BRKB로 정규화)
@@ -140,130 +142,45 @@ export default function RealtimeScreen() {
     }, 3000);
   }, []);
 
-  // KIS WS 메시지 파싱
-  // 형식: 0|HDFSCNT0|001|RSYM^SYMB^ZDIV^...
+  // 백엔드 WS 메시지 파싱 (JSON: { ticker, price, rate, mtyp, khms })
   const handleWsMessage = useCallback(
     (raw) => {
-      if (typeof raw !== 'string') return;
+      try {
+        const { ticker, price, mtyp, khms } = JSON.parse(raw);
+        const mtypLabel = { '1': '장중', '2': '장전', '3': '장후' }[mtyp] || `MTYP=${mtyp}`;
+        console.log(`[Backend WS] 가격 수신 - ${ticker}: ${price} (${khms}, ${mtypLabel})`);
 
-      // JSON 응답 (구독 등록 성공/실패 등)
-      if (raw.startsWith('{')) {
-        try {
-          const json = JSON.parse(raw);
-          console.log('[KIS WS] JSON 응답:', json);
-        } catch (e) {
-          console.log('[KIS WS] JSON 파싱 실패:', raw);
-        }
-        return;
+        const trade = tradesRef.current.find(
+          (t) => normalizeTicker(t.ticker) === normalizeTicker(ticker)
+        );
+        if (!trade) return;
+
+        flashDetection(trade.id);
+      } catch (e) {
+        console.warn('[Backend WS] 메시지 파싱 실패:', e.message);
       }
-
-      const parts = raw.split('|');
-      if (parts.length < 4) {
-        console.log('[KIS WS] 메시지 형식 오류 (파트 부족):', raw);
-        return;
-      }
-
-      const trId = parts[1];
-      if (trId !== 'HDFSCNT0') {
-        console.log('[KIS WS] 다른 tr_id 수신:', trId);
-        return;
-      }
-
-      const dataStr = parts[3];
-      const fields = dataStr.split('^');
-      // SYMB는 두 번째 필드(인덱스 1)
-      const symb = (fields[1] || '').toUpperCase();
-      if (!symb) {
-        console.log('[KIS WS] SYMB 없음:', fields);
-        return;
-      }
-
-      const last = fields[11] || '0';
-      const khms = fields[7] || '';
-      const mtyp = fields[25] || '1';
-      const mtypLabel = { '1': '장중', '2': '장전', '3': '장후' }[mtyp] || `MTYP=${mtyp}`;
-      console.log(`[KIS WS] 가격 수신 - ${symb}: ${last} (${khms}, ${mtypLabel})`);
-
-      const normSymb = normalizeTicker(symb);
-      const trade = tradesRef.current.find(
-        (t) => normalizeTicker(t.ticker) === normSymb
-      );
-      if (!trade) {
-        console.log(`[KIS WS] 등록되지 않은 종목: ${symb} (정규화: ${normSymb})`);
-        return;
-      }
-
-      console.log(`[KIS WS] 감지! ${trade.ticker} - 테두리 표시`);
-      flashDetection(trade.id);
     },
     [flashDetection]
   );
 
-  // KIS WebSocket 연결 + 구독
-  const connectAndSubscribe = useCallback(
-    (approvalKey, activeTrades) => {
-      try {
-        console.log(`[KIS WS] 연결 시도: ${KIS_WS_URL}`);
-        const ws = new WebSocket(KIS_WS_URL);
-        wsRef.current = ws;
+  // 백엔드 WebSocket 연결 (KIS 직접 연결 제거 — 백엔드가 중계)
+  const connectAndSubscribe = useCallback(() => {
+    try {
+      console.log(`[Backend WS] 연결 시도: ${BACKEND_WS_URL}`);
+      const ws = new WebSocket(BACKEND_WS_URL);
+      wsRef.current = ws;
 
-        ws.onopen = () => {
-          console.log('[KIS WS] 연결 성공 ✓');
-          for (const trade of activeTrades) {
-            const market = (trade.market || '').toUpperCase();
-            // KIS WS는 점→/, 하이픈→제거 (BRK.B → BRK/B, BRK-B → BRKB)
-            const ticker = (trade.ticker || '').toUpperCase()
-              .replace(/\./g, '/')
-              .replace(/-/g, '');
-            const trKey = `D${market}${ticker}`;
-            const message = JSON.stringify({
-              header: {
-                approval_key: approvalKey,
-                tr_type: '1',
-                custtype: 'P',
-                'content-type': 'utf-8',
-              },
-              body: {
-                input: {
-                  tr_id: 'HDFSCNT0',
-                  tr_key: trKey,
-                }
-              },
-            });
-            try {
-              ws.send(message);
-              console.log(`[KIS WS] 구독 요청 전송: ${trade.ticker} (${trKey})`);
-            } catch (e) {
-              console.error(`[KIS WS] 구독 전송 실패: ${trade.ticker} - ${e.message}`);
-              Alert.alert('구독 전송 실패', `${trade.ticker}: ${e.message}`);
-            }
-          }
-          Alert.alert(
-            '✅ KIS WS 연결',
-            `${activeTrades.length}개 종목 구독 요청 완료`
-          );
-        };
-
-        ws.onmessage = (event) => {
-          handleWsMessage(event.data);
-        };
-
-        ws.onerror = (e) => {
-          console.error('[KIS WS] 에러:', e?.message || e);
-          Alert.alert('WS 에러', e?.message || '연결 오류');
-        };
-
-        ws.onclose = () => {
-          console.log('[KIS WS] 연결 끊김');
-          wsRef.current = null;
-        };
-      } catch (e) {
-        console.error('[KIS WS] 연결 실패:', e.message);
-        Alert.alert('WS 연결 실패', e.message || '알 수 없는 오류');
-      }
-    },
-    [handleWsMessage]
-  );
+      ws.onopen = () => console.log('[Backend WS] 연결 성공 ✓');
+      ws.onmessage = (event) => handleWsMessage(event.data);
+      ws.onerror = (e) => console.error('[Backend WS] 에러:', e?.message || e);
+      ws.onclose = () => {
+        console.log('[Backend WS] 연결 끊김');
+        wsRef.current = null;
+      };
+    } catch (e) {
+      console.error('[Backend WS] 연결 실패:', e.message);
+    }
+  }, [handleWsMessage]);
 
   // trades 로드 + 서버 상태 확인 + (running일 때만) KIS WS 연결
   const initializeRealtime = useCallback(async () => {
@@ -302,24 +219,12 @@ export default function RealtimeScreen() {
     }
 
     const activeTrades = list.filter((t) => t.is_active);
-    console.log(`[Realtime] 활성 종목: ${activeTrades.length}개 (${activeTrades.map(t => t.ticker).join(', ')})`);
     if (activeTrades.length === 0) {
       console.log('[Realtime] 활성 종목이 없으므로 WS 연결 안 함');
       return;
     }
 
-    const { data: keyData, error: keyErr } = await fetchWebSocketKey();
-    if (keyErr || !keyData?.approval_key) {
-      console.error('[Realtime] WS 키 조회 실패:', keyErr);
-      Alert.alert(
-        'WS 키 없음',
-        keyErr?.message || 'WebSocket 키가 없습니다. 다시 로그인 해주세요.'
-      );
-      return;
-    }
-    console.log('[Realtime] WS 키 조회 완료');
-
-    connectAndSubscribe(keyData.approval_key, activeTrades);
+    connectAndSubscribe();
   }, [connectAndSubscribe]);
 
   useEffect(() => {
