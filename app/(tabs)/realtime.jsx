@@ -73,7 +73,7 @@ function TradeRow({ item, isLast, onPress, onToggle, isDetected, currentPrice })
       <View style={styles.tradeInfo}>
         <Text style={styles.tradeTicker}>{item.ticker}</Text>
         <Text style={styles.tradeMeta}>
-          {item.market} · 기준 ${item.base_price.toFixed(2)} · {item.gap}% · {item.quantity}주
+          {item.market} · 기준 ${item.base_price.toFixed(2)} · {item.gap}% × {item.gap_qty ?? 1}주 · 보유 {item.quantity}주
         </Text>
       </View>
       <View style={styles.tradePriceBlock}>
@@ -304,6 +304,7 @@ export default function RealtimeScreen() {
         ticker: item.ticker,
         market: item.market,
         gap: String(item.gap),
+        gap_qty: String(item.gap_qty ?? 1),
         base_price: String(item.base_price),
         quantity: String(item.quantity),
         is_active: String(item.is_active),

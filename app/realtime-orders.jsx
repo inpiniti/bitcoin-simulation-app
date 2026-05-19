@@ -159,6 +159,7 @@ export default function RealtimeOrdersScreen() {
         ticker: params.ticker,
         market: params.market,
         gap: params.gap,
+        gap_qty: params.gap_qty,
         base_price: params.base_price,
         quantity: params.quantity,
         is_active: params.is_active,

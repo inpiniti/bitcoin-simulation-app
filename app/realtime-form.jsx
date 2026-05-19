@@ -34,6 +34,7 @@ const DEFAULT_FORM = {
   ticker: '',
   market: 'NAS',
   gap: 1,
+  gap_qty: 1,
   base_price: 0,
   quantity: 0,
   is_active: true,
@@ -76,6 +77,7 @@ export default function RealtimeFormScreen() {
         ticker: params.ticker || '',
         market: params.market || 'NAS',
         gap: parseInt(params.gap) || 1,
+        gap_qty: parseInt(params.gap_qty) || 1,
         base_price: parseFloat(params.base_price) || 0,
         quantity: parseInt(params.quantity) || 0,
         is_active: params.is_active !== 'false',
@@ -87,6 +89,7 @@ export default function RealtimeFormScreen() {
         ticker: params.ticker,
         market: params.market || 'NAS',
         gap: 1,
+        gap_qty: 1,
         base_price: 0,
         quantity: 0,
         is_active: true,
@@ -150,6 +153,10 @@ export default function RealtimeFormScreen() {
       Alert.alert('알림', '갭은 0 이상이어야 합니다');
       return false;
     }
+    if (form.gap_qty <= 0) {
+      Alert.alert('알림', '갭 수량은 1 이상이어야 합니다');
+      return false;
+    }
     if (form.quantity < 0) {
       Alert.alert('알림', '수량은 0 이상이어야 합니다');
       return false;
@@ -166,6 +173,7 @@ export default function RealtimeFormScreen() {
         ticker: form.ticker.toUpperCase(),
         market: form.market,
         gap: form.gap,
+        gap_qty: form.gap_qty,
         base_price: form.base_price,
         quantity: form.quantity,
       };
@@ -304,9 +312,24 @@ export default function RealtimeFormScreen() {
           </View>
         </View>
 
-        {/* 수량 입력 */}
+        {/* 갭 수량 입력 */}
         <View style={{ marginBottom: 20 }}>
-          <Text style={styles.fieldLabel}>수량</Text>
+          <Text style={styles.fieldLabel}>갭 수량 (갭 도달 시 매수/매도할 수량)</Text>
+          <View style={styles.inputRow}>
+            <TextInput
+              style={[styles.textInput, { flex: 1 }]}
+              placeholder="1"
+              placeholderTextColor={tdsDark.textTertiary}
+              keyboardType="number-pad"
+              value={form.gap_qty.toString()}
+              onChangeText={(qty) => setForm({ ...form, gap_qty: parseInt(qty) || 0 })}
+            />
+          </View>
+        </View>
+
+        {/* 수량 입력 (현재 보유 수량 — 매매 시 자동 갱신) */}
+        <View style={{ marginBottom: 20 }}>
+          <Text style={styles.fieldLabel}>수량 (현재 보유)</Text>
           <View style={styles.inputRow}>
             <TextInput
               style={[styles.textInput, { flex: 1 }]}
