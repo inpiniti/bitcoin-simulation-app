@@ -171,35 +171,33 @@ export default function PortfolioScreen() {
 
   const renderAllocationChart = () => {
     if (!proposedPortfolio.length) return null;
-    
-    // 상위 10개 색상 (TDS 색상 및 보조색)
+
+    // 색상 팔레트 — tickerCount가 팔레트보다 크면 인덱스 % 길이로 반복
     const CHART_COLORS = [
-      '#3182f6', '#f04452', '#03b26c', '#fe9800', '#8b5cf6', 
-      '#06b6d4', '#ec4899', '#f59e0b', '#10b981', '#6366f1'
+      '#3182f6', '#f04452', '#03b26c', '#fe9800', '#8b5cf6',
+      '#06b6d4', '#ec4899', '#f59e0b', '#10b981', '#6366f1',
+      '#0ea5e9', '#dc2626', '#16a34a', '#d97706', '#7c3aed',
+      '#0891b2', '#db2777', '#ca8a04', '#059669', '#4f46e5',
     ];
 
-    const displayItems = proposedPortfolio.slice(0, 10);
+    // 차트와 레전드 모두 tickerCount 만큼 표시 (이전엔 상위 10개 외 종목이
+    // 잔여분 회색 박스로 합쳐져 레전드에서 누락되는 문제가 있었음)
+    const displayItems = proposedPortfolio;
     const cashWeight = cashRatio * 100;
-    // 100%를 정확히 채우도록 나머지(상위 11+ 종목)는 잔여분으로 계산
-    const displayWeightSum = displayItems.reduce((sum, s) => sum + s.weightPercent, 0);
-    const othersWeight = Math.max(0, 100 - displayWeightSum - cashWeight);
 
     return (
       <View style={styles.chartSection}>
         <Text style={styles.sectionTitle}>선택 종목 · {tickerCount}</Text>
         <Text style={styles.chartSubText}>투자자 데이터 기반의 참고 수치입니다.</Text>
-        
+
         {/* Stacked Bar Chart */}
         <View style={styles.stackedBar}>
           {displayItems.map((s, i) => (
-            <View 
-              key={s.stock} 
-              style={[styles.barSegment, { width: `${s.weightPercent}%`, backgroundColor: CHART_COLORS[i] }]} 
+            <View
+              key={s.stock}
+              style={[styles.barSegment, { width: `${s.weightPercent}%`, backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }]}
             />
           ))}
-          {othersWeight > 0 && (
-            <View style={[styles.barSegment, { width: `${othersWeight}%`, backgroundColor: '#e5e8eb' }]} />
-          )}
           <View style={[styles.barSegment, { width: `${cashWeight}%`, backgroundColor: '#b0b8c1' }]} />
         </View>
 
@@ -207,7 +205,7 @@ export default function PortfolioScreen() {
         <View style={styles.legendContainer}>
           {displayItems.map((s, i) => (
             <View key={s.stock} style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: CHART_COLORS[i] }]} />
+              <View style={[styles.legendDot, { backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }]} />
               <Text style={styles.legendLabel}>{s.stock}</Text>
               <Text style={styles.legendValue}>{s.weightPercent.toFixed(1)}%</Text>
             </View>
