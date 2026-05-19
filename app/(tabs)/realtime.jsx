@@ -40,9 +40,22 @@ function normalizeTicker(t) {
   return String(t || '').toUpperCase().replace(/[-./]/g, '');
 }
 
-function TradeRow({ item, isLast, onPress, onToggle, isDetected }) {
+function TradeRow({ item, isLast, onPress, onToggle, isDetected, currentPrice }) {
   const statusBadgeColor = item.is_active ? 'blue' : 'grey';
   const detectedBorderColor = isDetected ? tdsColors.red600 : 'transparent';
+
+  const hasCurrent = Number.isFinite(currentPrice) && currentPrice > 0;
+  const diffPct = hasCurrent && item.base_price > 0
+    ? ((currentPrice - item.base_price) / item.base_price) * 100
+    : null;
+  const diffColor = diffPct == null
+    ? tdsDark.textTertiary
+    : diffPct > 0
+      ? tdsColors.red500
+      : diffPct < 0
+        ? tdsColors.blue500
+        : tdsDark.textSecondary;
+  const diffSign = diffPct == null ? '' : diffPct > 0 ? '+' : '';
 
   return (
     <TouchableOpacity
@@ -60,7 +73,15 @@ function TradeRow({ item, isLast, onPress, onToggle, isDetected }) {
       <View style={styles.tradeInfo}>
         <Text style={styles.tradeTicker}>{item.ticker}</Text>
         <Text style={styles.tradeMeta}>
-          {item.market} · ${item.base_price.toFixed(2)} · {item.gap}% · {item.quantity}주
+          {item.market} · 기준 ${item.base_price.toFixed(2)} · {item.gap}% · {item.quantity}주
+        </Text>
+      </View>
+      <View style={styles.tradePriceBlock}>
+        <Text style={styles.tradeCurrentPrice}>
+          {hasCurrent ? `$${currentPrice.toFixed(2)}` : '-'}
+        </Text>
+        <Text style={[styles.tradeDiffPct, { color: diffColor }]}>
+          {diffPct == null ? '–' : `${diffSign}${diffPct.toFixed(2)}%`}
         </Text>
       </View>
       <TouchableOpacity onPress={() => onToggle(item)} activeOpacity={0.7}>
@@ -93,6 +114,7 @@ export default function RealtimeScreen() {
   const [detectedIds, setDetectedIds] = useState(new Set());
   const [detectionRunning, setDetectionRunning] = useState(false);
   const [startingDetection, setStartingDetection] = useState(false);
+  const [currentPrices, setCurrentPrices] = useState({}); // { normalizedTicker: price }
 
   const wsRef = useRef(null);
   const tradesRef = useRef([]);
@@ -150,8 +172,14 @@ export default function RealtimeScreen() {
         const mtypLabel = { '1': '장중', '2': '장전', '3': '장후' }[mtyp] || `MTYP=${mtyp}`;
         console.log(`[Backend WS] 가격 수신 - ${ticker}: ${price} (${khms}, ${mtypLabel})`);
 
+        const normalized = normalizeTicker(ticker);
+        const numPrice = Number(price);
+        if (Number.isFinite(numPrice) && numPrice > 0) {
+          setCurrentPrices((prev) => ({ ...prev, [normalized]: numPrice }));
+        }
+
         const trade = tradesRef.current.find(
-          (t) => normalizeTicker(t.ticker) === normalizeTicker(ticker)
+          (t) => normalizeTicker(t.ticker) === normalized
         );
         if (!trade) return;
 
@@ -359,6 +387,7 @@ export default function RealtimeScreen() {
                   onPress={handlePress}
                   onToggle={handleToggle}
                   isDetected={detectedIds.has(trade.id)}
+                  currentPrice={currentPrices[normalizeTicker(trade.ticker)]}
                 />
               ))}
             </View>
@@ -494,6 +523,20 @@ const styles = StyleSheet.create({
   tradeMeta: {
     fontSize: 12,
     color: tdsDark.textTertiary,
+    marginTop: 2,
+  },
+  tradePriceBlock: {
+    alignItems: 'flex-end',
+    minWidth: 70,
+  },
+  tradeCurrentPrice: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: tdsDark.textPrimary,
+  },
+  tradeDiffPct: {
+    fontSize: 12,
+    fontWeight: '600',
     marginTop: 2,
   },
   loadingContainer: {

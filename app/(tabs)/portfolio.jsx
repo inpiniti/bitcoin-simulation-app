@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Button } from '../../components/tds/Button';
 import { tdsDark, tdsColors } from '../../constants/tdsColors';
 import { ListRow } from '../../components/tds/ListRow';
@@ -25,6 +26,8 @@ import { fetchKisFullBalance } from '../../lib/kisApi';
 import { PORTFOLIO_DATA as FALLBACK_DATA } from '../../lib/portfolioData';
 import { formatPrice } from '../../utils/price';
 import useStore from '../../store/useStore';
+
+const PORTFOLIO_SETTINGS_KEY = 'portfolio:settings:v1';
 
 // ─── 유틸리티 ───────────────────────────────────────────────────────────────
 
@@ -81,6 +84,38 @@ export default function PortfolioScreen() {
   const [cashRatio, setCashRatio] = useState(0.1);
   const [sortMode, setSortMode] = useState('investor'); // 'investor' (투자자 수) | 'ratio' (비중 합계)
   const [weightMode, setWeightMode] = useState('ratio'); // 'ratio' (비중 합계) | 'investor' (투자자 수)
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+
+  // 저장된 설정 로드 (마운트 1회)
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(PORTFOLIO_SETTINGS_KEY);
+        if (mounted && raw) {
+          const s = JSON.parse(raw);
+          if (typeof s.tickerCount === 'number') setTickerCount(s.tickerCount);
+          if (typeof s.cashRatio === 'number') setCashRatio(s.cashRatio);
+          if (typeof s.sortMode === 'string') setSortMode(s.sortMode);
+          if (typeof s.weightMode === 'string') setWeightMode(s.weightMode);
+        }
+      } catch (e) {
+        console.warn('[Portfolio] 설정 로드 실패:', e?.message);
+      } finally {
+        if (mounted) setSettingsLoaded(true);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  // 값 변경 시 저장 (로드 완료 후부터)
+  useEffect(() => {
+    if (!settingsLoaded) return;
+    AsyncStorage.setItem(
+      PORTFOLIO_SETTINGS_KEY,
+      JSON.stringify({ tickerCount, cashRatio, sortMode, weightMode }),
+    ).catch((e) => console.warn('[Portfolio] 설정 저장 실패:', e?.message));
+  }, [settingsLoaded, tickerCount, cashRatio, sortMode, weightMode]);
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
