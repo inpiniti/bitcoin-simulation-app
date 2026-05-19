@@ -23,6 +23,7 @@ import { sampleAccount } from '../../lib/sampleData';
 import useStore from '../../store/useStore';
 import { getPriceColor, formatRate, formatPrice } from '../../utils/price';
 import { LogoBadge } from '../../components/tds/LogoBadge';
+import { supabase } from '../../lib/supabaseClient';
 
 function formatCurrency(value, currency) {
   if (value == null) return '-';
@@ -115,6 +116,18 @@ export default function AccountScreen() {
         const data = await fetchKisFullBalance();
         setFullData(data);
         setNotice(null);
+
+        // Supabase에 디버그 로그 저장
+        try {
+          await supabase.from('kis_debug_logs').insert({
+            krw_data: data.krw,
+            usd_data: data.usd,
+            notes: `Logged at ${new Date().toISOString()}`,
+          });
+          console.log('[Account] KIS 데이터 Supabase 저장 완료');
+        } catch (logErr) {
+          console.warn('[Account] Supabase 로그 저장 실패:', logErr?.message);
+        }
       } catch (e) {
         setNotice('연결 전 화면을 미리 보고 있어요. 계좌 정보는 샘플 데이터로 보여주고 있어요.');
         setFullData({
