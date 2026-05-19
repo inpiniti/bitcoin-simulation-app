@@ -20,7 +20,7 @@ import { tdsDark, tdsColors } from '../../constants/tdsColors';
 import { ListRow } from '../../components/tds/ListRow';
 import { LogoBadge } from '../../components/tds/LogoBadge';
 import { BottomSheet } from '../../components/tds/BottomSheet';
-import { fetchPortfolioData } from '../../lib/portfolioApi';
+import { fetchPortfolioData, fetchClosePrices } from '../../lib/portfolioApi';
 import { fetchKisFullBalance } from '../../lib/kisApi';
 import { PORTFOLIO_DATA as FALLBACK_DATA } from '../../lib/portfolioData';
 import { formatPrice } from '../../utils/price';
@@ -88,6 +88,24 @@ export default function PortfolioScreen() {
     try {
       // 1. 포트폴리오 메타 데이터 조회
       const result = await fetchPortfolioData();
+
+      // 백엔드 캐시 데이터에 close 가격이 누락된 종목들이 있어 Yahoo로 보충
+      // (상위 30개만 보충 — tickerCount 최대값 고려)
+      const sortedStocks = [...result.based_on_stock].sort(
+        (a, b) => (b.person_count || 0) - (a.person_count || 0),
+      );
+      const topMissing = sortedStocks
+        .slice(0, 30)
+        .filter((s) => !s.close)
+        .map((s) => s.stock);
+
+      if (topMissing.length > 0) {
+        const priceMap = await fetchClosePrices(topMissing);
+        result.based_on_stock = result.based_on_stock.map((s) =>
+          s.close ? s : { ...s, close: priceMap[s.stock] ?? null },
+        );
+      }
+
       setData(result);
 
       // 2. 실계좌 자산 정보 조회 (USD 기준)
@@ -114,26 +132,28 @@ export default function PortfolioScreen() {
   const proposedPortfolio = useMemo(() => {
     if (!data.based_on_stock.length) return [];
 
-    // 1. 정렬
-    const sorted = [...data.based_on_stock].sort((a, b) => {
-      const valA = sortMode === 'investor' ? a.person_count : a.sum_ratio;
-      const valB = sortMode === 'investor' ? b.person_count : b.sum_ratio;
-      return valB - valA;
-    });
+    const getWeightValue = (s) =>
+      Number(weightMode === 'investor' ? s.person_count : s.sum_ratio) || 0;
+    const getSortValue = (s) =>
+      Number(sortMode === 'investor' ? s.person_count : s.sum_ratio) || 0;
 
-    // 2. 선택된 상위 종목
-    const topStocks = sorted.slice(0, tickerCount).map(s => ({
+    const sorted = [...data.based_on_stock].sort(
+      (a, b) => getSortValue(b) - getSortValue(a),
+    );
+
+    const topStocks = sorted.slice(0, tickerCount).map((s) => ({
       ...s,
-      weightValue: weightMode === 'investor' ? s.person_count : s.sum_ratio
+      weightValue: getWeightValue(s),
     }));
 
     const totalWeightValue = topStocks.reduce((sum, s) => sum + s.weightValue, 0);
     const availableCash = totalAssets * (1 - cashRatio);
 
-    return topStocks.map(s => {
-      const weightRatio = s.weightValue / totalWeightValue; // 정규화된 비중
+    return topStocks.map((s) => {
+      const weightRatio = totalWeightValue > 0 ? s.weightValue / totalWeightValue : 0;
       const allocation = availableCash * weightRatio;
-      const qty = s.close ? Math.floor(allocation / s.close) : 0;
+      const closePrice = Number(s.close) || 0;
+      const qty = closePrice > 0 ? Math.floor(allocation / closePrice) : 0;
       const weightPercent = weightRatio * (1 - cashRatio) * 100;
       return { ...s, suggestedQty: qty, allocation, weightPercent };
     });

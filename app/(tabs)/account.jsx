@@ -199,28 +199,31 @@ export default function AccountScreen() {
             </View>
 
             <View style={styles.listCard}>
-              {balance.map((item) => (
-                <ListRow
-                  key={item.ticker}
-                  onPress={() => {
-                    setSelected(item);
-                    setSheetOpen(true);
-                  }}
-                  left={<LogoBadge name={item.name} ticker={item.ticker} size={44} />}
-                  title={item.name}
-                  subtitle={item.ticker}
-                  right={
-                    <View style={styles.rightBlock}>
-                      <Text style={[styles.rateText, { color: getPriceColor(item.profit_rate) }]}>
-                        {formatRate(item.profit_rate)}
-                      </Text>
-                      <Text style={styles.priceSmall}>
-                        {currency === 'USD' ? `$${item.eval_amount_foreign?.toFixed(2)}` : formatPrice(item.eval_amount)}
-                      </Text>
-                    </View>
-                  }
-                />
-              ))}
+              {balance.map((item) => {
+                const evalAmt = currency === 'USD' ? item.eval_amount_usd : item.eval_amount_krw;
+                const buyAmt = currency === 'USD' ? item.buy_amount_usd : item.buy_amount_krw;
+                return (
+                  <ListRow
+                    key={item.ticker}
+                    onPress={() => {
+                      setSelected(item);
+                      setSheetOpen(true);
+                    }}
+                    left={<LogoBadge name={item.name} ticker={item.ticker} size={44} />}
+                    title={item.name}
+                    subtitle={`${item.ticker} · ${item.qty}주`}
+                    right={
+                      <View style={styles.rightBlock}>
+                        <Text style={[styles.rateText, { color: getPriceColor(item.profit_rate) }]}>
+                          {formatRate(item.profit_rate)}
+                        </Text>
+                        <Text style={styles.priceSmall}>평가 {formatCurrency(evalAmt, currency)}</Text>
+                        <Text style={styles.priceSmallMuted}>매입 {formatCurrency(buyAmt, currency)}</Text>
+                      </View>
+                    }
+                  />
+                );
+              })}
             </View>
           </>
         )}
@@ -237,24 +240,36 @@ export default function AccountScreen() {
           </View>
         }
       >
-        {selected && (
-          <View style={{ paddingBottom: 20 }}>
-            <Text style={styles.sheetCode}>{selected.ticker}</Text>
-            <Text style={styles.sheetPriceMain}>
-              {currency === 'USD' ? `$${selected.current_price?.toFixed(2)}` : formatPrice(selected.current_price)}
-            </Text>
-            <View style={styles.orderRow}>
-              <Text style={styles.sheetLabel}>보유 수량</Text>
-              <Text style={styles.sheetValue}>{selected.qty}주</Text>
+        {selected && (() => {
+          const evalAmt = currency === 'USD' ? selected.eval_amount_usd : selected.eval_amount_krw;
+          const buyAmt = currency === 'USD' ? selected.buy_amount_usd : selected.buy_amount_krw;
+          const curPrice = currency === 'USD' ? selected.current_price_usd : selected.current_price_krw;
+          const profitAmt = (evalAmt ?? 0) - (buyAmt ?? 0);
+          return (
+            <View style={{ paddingBottom: 20 }}>
+              <Text style={styles.sheetCode}>{selected.ticker}</Text>
+              <Text style={styles.sheetPriceMain}>{formatCurrency(curPrice, currency)}</Text>
+              <View style={styles.orderRow}>
+                <Text style={styles.sheetLabel}>보유 수량</Text>
+                <Text style={styles.sheetValue}>{selected.qty}주</Text>
+              </View>
+              <View style={styles.orderRow}>
+                <Text style={styles.sheetLabel}>매입금액</Text>
+                <Text style={styles.sheetValue}>{formatCurrency(buyAmt, currency)}</Text>
+              </View>
+              <View style={styles.orderRow}>
+                <Text style={styles.sheetLabel}>평가금액</Text>
+                <Text style={styles.sheetValue}>{formatCurrency(evalAmt, currency)}</Text>
+              </View>
+              <View style={styles.orderRow}>
+                <Text style={styles.sheetLabel}>평가손익</Text>
+                <Text style={[styles.sheetValue, { color: getPriceColor(profitAmt) }]}>
+                  {formatSignedCurrency(profitAmt, currency)}
+                </Text>
+              </View>
             </View>
-            <View style={styles.orderRow}>
-              <Text style={styles.sheetLabel}>평가 손익</Text>
-              <Text style={[styles.sheetValue, { color: getPriceColor(selected.profit_rate) }]}>
-                {formatSignedCurrency(currency === 'USD' ? (selected.eval_amount_foreign - selected.buy_amount / selected.exchange_rate) : selected.profit_amount, currency)}
-              </Text>
-            </View>
-          </View>
-        )}
+          );
+        })()}
       </BottomSheet>
     </SafeAreaView>
   );
@@ -339,6 +354,7 @@ const styles = StyleSheet.create({
   rightBlock: { alignItems: 'flex-end' },
   rateText: { fontSize: 15, fontWeight: '700' },
   priceSmall: { fontSize: 12, color: tdsDark.textSecondary, marginTop: 2 },
+  priceSmallMuted: { fontSize: 11, color: tdsDark.textTertiary, marginTop: 1 },
   sheetCtaRow: { flexDirection: 'row', gap: 12, marginTop: 10 },
   sheetCode: { fontSize: 13, color: tdsDark.textTertiary, marginBottom: 4 },
   sheetPriceMain: { fontSize: 32, fontWeight: '700', color: tdsDark.textPrimary, marginBottom: 16 },
