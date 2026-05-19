@@ -244,7 +244,7 @@ export default function AccountScreen() {
           const evalAmt = currency === 'USD' ? selected.eval_amount_usd : selected.eval_amount_krw;
           const buyAmt = currency === 'USD' ? selected.buy_amount_usd : selected.buy_amount_krw;
           const curPrice = currency === 'USD' ? selected.current_price_usd : selected.current_price_krw;
-          const profitAmt = (evalAmt ?? 0) - (buyAmt ?? 0);
+          const profitAmt = currency === 'USD' ? selected.profit_amount_usd : selected.profit_amount_krw;
           return (
             <View style={{ paddingBottom: 20 }}>
               <Text style={styles.sheetCode}>{selected.ticker}</Text>
