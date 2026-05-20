@@ -17,6 +17,7 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   Alert,
+  AppState,
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -266,6 +267,30 @@ export default function RealtimeScreen() {
       Object.values(detectionTimeoutsRef.current).forEach(clearTimeout);
       detectionTimeoutsRef.current = {};
     };
+  }, [initializeRealtime]);
+
+  // 앱이 background → foreground로 복귀하면 WS 상태 점검 후 끊겨있으면 재연결.
+  // iOS는 background 진입 시 WebSocket을 강제로 종료시켜서 그냥 두면 가격 수신이 멈춤.
+  useEffect(() => {
+    const appStateRef = { current: AppState.currentState };
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      const prev = appStateRef.current;
+      appStateRef.current = nextState;
+      if (
+        (prev === 'background' || prev === 'inactive') &&
+        nextState === 'active'
+      ) {
+        const ws = wsRef.current;
+        const isOpen = ws && ws.readyState === WebSocket.OPEN;
+        console.log(
+          `[Realtime] 앱 foreground 복귀 (WS=${isOpen ? 'OPEN' : '끊김'})`
+        );
+        if (!isOpen) {
+          initializeRealtime();
+        }
+      }
+    });
+    return () => subscription.remove();
   }, [initializeRealtime]);
 
   const handleStartDetection = async () => {
