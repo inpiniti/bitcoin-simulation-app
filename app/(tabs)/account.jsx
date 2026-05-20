@@ -1,7 +1,7 @@
 /**
  * 계좌 탭 — KIS 잔고 + 예수금 + 매수/매도 (원화/달러 토글 추가)
  */
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   SafeAreaView,
   ScrollView,
@@ -12,6 +12,8 @@ import {
   Alert,
   RefreshControl,
   ActivityIndicator,
+  AppState,
+  Animated,
 } from 'react-native';
 import { tdsDark, tdsColors } from '../../constants/tdsColors';
 import { ListRow } from '../../components/tds/ListRow';
@@ -19,10 +21,22 @@ import { Button } from '../../components/tds/Button';
 import { BottomSheet } from '../../components/tds/BottomSheet';
 import { SegmentControl } from '../../components/tds/SegmentControl';
 import { fetchKisFullBalance, submitKisOrder } from '../../lib/kisApi';
+import { fetchDetectionStatus } from '../../lib/realtimeApi';
 import { sampleAccount } from '../../lib/sampleData';
 import useStore from '../../store/useStore';
 import { getPriceColor, formatRate, formatPrice } from '../../utils/price';
 import { LogoBadge } from '../../components/tds/LogoBadge';
+
+const API_BASE =
+  process.env.EXPO_PUBLIC_API_BASE_URL ||
+  'https://younginpiniti-bitcoin-ai-backend.hf.space';
+const BACKEND_WS_URL =
+  API_BASE.replace('https://', 'wss://').replace('http://', 'ws://') +
+  '/realtime/ws';
+
+function normalizeTicker(t) {
+  return String(t || '').toUpperCase().replace(/[-./]/g, '');
+}
 
 function formatCurrency(value, currency) {
   if (value == null) return '-';
@@ -42,7 +56,7 @@ function formatSignedCurrency(value, currency) {
 
 function PortfolioSummary({ balance, summary, currency }) {
   if (!balance || balance.length === 0) return null;
-  
+
   const avgRate = summary?.profitRate ?? 0;
   const rateColor = getPriceColor(avgRate);
   const profitAmount = summary?.profitAmount ?? 0;
@@ -61,23 +75,51 @@ function PortfolioSummary({ balance, summary, currency }) {
           </Text>
         </View>
       </View>
-
-      <View style={styles.portfolioChips}>
-        {balance.map((b) => (
-          <View key={b.ticker} style={styles.portfolioChip}>
-            <Text style={styles.portfolioChipName}>{b.name}</Text>
-            <Text
-              style={[
-                styles.portfolioChipRate,
-                { color: getPriceColor(b.profit_rate) },
-              ]}
-            >
-              {formatRate(b.profit_rate)}
-            </Text>
-          </View>
-        ))}
-      </View>
     </View>
+  );
+}
+
+// 보유종목 행 — flashTick(timestamp)가 바뀌면 옅은 파란색에서 페이드 아웃
+function HoldingRow({ item, currency, flashTick, onPress }) {
+  const flashAnim = useRef(new Animated.Value(0)).current;
+  const prevTickRef = useRef(flashTick);
+  useEffect(() => {
+    if (flashTick && flashTick !== prevTickRef.current) {
+      prevTickRef.current = flashTick;
+      flashAnim.setValue(1);
+      Animated.timing(flashAnim, {
+        toValue: 0,
+        duration: 1500,
+        useNativeDriver: false,
+      }).start();
+    }
+  }, [flashTick, flashAnim]);
+  const bg = flashAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['rgba(0,0,0,0)', `${tdsColors.blue500}25`],
+  });
+
+  const evalAmt = currency === 'USD' ? item.eval_amount_usd : item.eval_amount_krw;
+  const buyAmt = currency === 'USD' ? item.buy_amount_usd : item.buy_amount_krw;
+
+  return (
+    <Animated.View style={{ backgroundColor: bg }}>
+      <ListRow
+        onPress={() => onPress(item)}
+        left={<LogoBadge name={item.name} ticker={item.ticker} size={44} />}
+        title={item.name}
+        subtitle={`${item.ticker} · ${item.qty}주`}
+        right={
+          <View style={styles.rightBlock}>
+            <Text style={[styles.rateText, { color: getPriceColor(item.profit_rate) }]}>
+              {formatRate(item.profit_rate)}
+            </Text>
+            <Text style={styles.priceSmall}>평가 {formatCurrency(evalAmt, currency)}</Text>
+            <Text style={styles.priceSmallMuted}>매입 {formatCurrency(buyAmt, currency)}</Text>
+          </View>
+        }
+      />
+    </Animated.View>
   );
 }
 
@@ -92,6 +134,12 @@ export default function AccountScreen() {
   const [notice, setNotice] = useState(null);
   const [selected, setSelected] = useState(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+
+  // 실시간 가격 (USD) — 백엔드 WebSocket으로 수신. 키: 정규화 ticker
+  const [livePricesUsd, setLivePricesUsd] = useState({});
+  // 마지막 갱신 시각 (페이드 트리거용)
+  const [liveTicks, setLiveTicks] = useState({});
+  const wsRef = useRef(null);
 
   const load = useCallback(
     async (isRefresh = false) => {
@@ -134,8 +182,114 @@ export default function AccountScreen() {
     load();
   }, [load]);
 
-  const currentSummary = currency === 'KRW' ? fullData?.krw : fullData?.usd;
-  const balance = fullData?.holdings || [];
+  // ─── 실시간 가격 WebSocket ────────────────────────────────────
+  const connectWs = useCallback(async () => {
+    if (wsRef.current) {
+      try { wsRef.current.close(); } catch (_e) {}
+      wsRef.current = null;
+    }
+    try {
+      const { data: statusData } = await fetchDetectionStatus();
+      if (!statusData?.running) return; // 서버 감지 안 돌면 연결 안 함
+      const ws = new WebSocket(BACKEND_WS_URL);
+      wsRef.current = ws;
+      ws.onmessage = (event) => {
+        try {
+          const { ticker, price } = JSON.parse(event.data);
+          const normalized = normalizeTicker(ticker);
+          const numPrice = Number(price);
+          if (Number.isFinite(numPrice) && numPrice > 0) {
+            setLivePricesUsd((prev) =>
+              prev[normalized] === numPrice ? prev : { ...prev, [normalized]: numPrice }
+            );
+            setLiveTicks((prev) => ({ ...prev, [normalized]: Date.now() }));
+          }
+        } catch (_e) {}
+      };
+      ws.onclose = () => { wsRef.current = null; };
+    } catch (_e) {}
+  }, []);
+
+  useEffect(() => {
+    connectWs();
+    return () => {
+      if (wsRef.current) {
+        try { wsRef.current.close(); } catch (_e) {}
+        wsRef.current = null;
+      }
+    };
+  }, [connectWs]);
+
+  // foreground 복귀 시 WS 끊겼으면 재연결 (iOS background에서 강제 종료 대응)
+  useEffect(() => {
+    const appStateRef = { current: AppState.currentState };
+    const sub = AppState.addEventListener('change', (next) => {
+      const prev = appStateRef.current;
+      appStateRef.current = next;
+      if ((prev === 'background' || prev === 'inactive') && next === 'active') {
+        const ws = wsRef.current;
+        if (!ws || ws.readyState !== WebSocket.OPEN) connectWs();
+      }
+    });
+    return () => sub.remove();
+  }, [connectWs]);
+
+  // ─── 실시간 가격 반영한 holdings/summary 계산 ────────────────────
+  const baseSummary = currency === 'KRW' ? fullData?.krw : fullData?.usd;
+  const baseBalance = fullData?.holdings || [];
+
+  // 실시간 가격이 있는 종목은 평가금액/수익률을 재계산.
+  // KRW는 보유데이터의 (current_price_krw / current_price_usd) 비율을 환율로 사용.
+  const balance = useMemo(() => {
+    if (Object.keys(livePricesUsd).length === 0) return baseBalance;
+    return baseBalance.map((item) => {
+      const normalized = normalizeTicker(item.ticker);
+      const liveUsd = livePricesUsd[normalized];
+      if (!Number.isFinite(liveUsd) || liveUsd <= 0) return item;
+      const qty = Number(item.qty) || 0;
+      const newEvalUsd = liveUsd * qty;
+      const buyUsd = Number(item.buy_amount_usd) || 0;
+      const newProfitUsd = newEvalUsd - buyUsd;
+      const newProfitRate = buyUsd > 0 ? (newProfitUsd / buyUsd) * 100 : item.profit_rate;
+      const fxRate =
+        item.current_price_usd > 0
+          ? (Number(item.current_price_krw) || 0) / Number(item.current_price_usd)
+          : 0;
+      const newEvalKrw = fxRate > 0 ? newEvalUsd * fxRate : item.eval_amount_krw;
+      const newProfitKrw = fxRate > 0 ? newProfitUsd * fxRate : item.profit_amount_krw;
+      return {
+        ...item,
+        current_price_usd: liveUsd,
+        current_price_krw: fxRate > 0 ? liveUsd * fxRate : item.current_price_krw,
+        eval_amount_usd: newEvalUsd,
+        eval_amount_krw: newEvalKrw,
+        profit_amount_usd: newProfitUsd,
+        profit_amount_krw: newProfitKrw,
+        profit_rate: newProfitRate,
+      };
+    });
+  }, [baseBalance, livePricesUsd]);
+
+  // 전체 summary 재계산 (예수금은 그대로)
+  const currentSummary = useMemo(() => {
+    if (!baseSummary) return baseSummary;
+    if (Object.keys(livePricesUsd).length === 0 || balance.length === 0) return baseSummary;
+    const evalKey = currency === 'USD' ? 'eval_amount_usd' : 'eval_amount_krw';
+    const profitKey = currency === 'USD' ? 'profit_amount_usd' : 'profit_amount_krw';
+    const buyKey = currency === 'USD' ? 'buy_amount_usd' : 'buy_amount_krw';
+    const evalAmount = balance.reduce((s, b) => s + (Number(b[evalKey]) || 0), 0);
+    const profitAmount = balance.reduce((s, b) => s + (Number(b[profitKey]) || 0), 0);
+    const buyTotal = balance.reduce((s, b) => s + (Number(b[buyKey]) || 0), 0);
+    const profitRate = buyTotal > 0 ? (profitAmount / buyTotal) * 100 : baseSummary.profitRate;
+    const deposit = Number(baseSummary.depositAmount) || 0;
+    return {
+      ...baseSummary,
+      evalAmount,
+      profitAmount,
+      profitRate,
+      totalAsset: evalAmount + deposit,
+    };
+  }, [baseSummary, balance, livePricesUsd, currency]);
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -199,31 +353,18 @@ export default function AccountScreen() {
             </View>
 
             <View style={styles.listCard}>
-              {balance.map((item) => {
-                const evalAmt = currency === 'USD' ? item.eval_amount_usd : item.eval_amount_krw;
-                const buyAmt = currency === 'USD' ? item.buy_amount_usd : item.buy_amount_krw;
-                return (
-                  <ListRow
-                    key={item.ticker}
-                    onPress={() => {
-                      setSelected(item);
-                      setSheetOpen(true);
-                    }}
-                    left={<LogoBadge name={item.name} ticker={item.ticker} size={44} />}
-                    title={item.name}
-                    subtitle={`${item.ticker} · ${item.qty}주`}
-                    right={
-                      <View style={styles.rightBlock}>
-                        <Text style={[styles.rateText, { color: getPriceColor(item.profit_rate) }]}>
-                          {formatRate(item.profit_rate)}
-                        </Text>
-                        <Text style={styles.priceSmall}>평가 {formatCurrency(evalAmt, currency)}</Text>
-                        <Text style={styles.priceSmallMuted}>매입 {formatCurrency(buyAmt, currency)}</Text>
-                      </View>
-                    }
-                  />
-                );
-              })}
+              {balance.map((item) => (
+                <HoldingRow
+                  key={item.ticker}
+                  item={item}
+                  currency={currency}
+                  flashTick={liveTicks[normalizeTicker(item.ticker)]}
+                  onPress={(it) => {
+                    setSelected(it);
+                    setSheetOpen(true);
+                  }}
+                />
+              ))}
             </View>
           </>
         )}
@@ -331,23 +472,11 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: tdsDark.bgCard,
   },
-  portfolioTopRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
+  portfolioTopRow: { flexDirection: 'row', justifyContent: 'space-between' },
   portfolioTitle: { fontSize: 14, fontWeight: '600', color: tdsDark.textPrimary },
   portfolioMetaRight: { alignItems: 'flex-end', gap: 4 },
   portfolioAvgRate: { fontSize: 16, fontWeight: '700' },
   portfolioProfit: { fontSize: 13, fontWeight: '600' },
-  portfolioChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  portfolioChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: tdsDark.bgSecondary,
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    gap: 4,
-  },
-  portfolioChipName: { fontSize: 12, color: tdsDark.textSecondary },
-  portfolioChipRate: { fontSize: 12, fontWeight: '600' },
   holdingsHeader: { marginTop: 24, marginBottom: 8 },
   sectionTitle: { fontSize: 13, color: tdsDark.textSecondary, marginHorizontal: 20, fontWeight: '600' },
   listCard: { backgroundColor: tdsDark.bgCard, borderTopWidth: 1, borderTopColor: tdsDark.border },

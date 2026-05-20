@@ -18,7 +18,10 @@ import {
   TouchableOpacity,
   Alert,
   AppState,
+  Animated,
 } from 'react-native';
+
+const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { tdsDark, tdsColors } from '../../constants/tdsColors';
@@ -43,7 +46,23 @@ function normalizeTicker(t) {
 
 function TradeRow({ item, isLast, onPress, onToggle, isDetected, currentPrice }) {
   const statusBadgeColor = item.is_active ? 'blue' : 'grey';
-  const detectedBorderColor = isDetected ? tdsColors.red600 : 'transparent';
+
+  // 감지 시 옅은 파란색 → 투명으로 1.5초간 페이드 (레이아웃 변동 없음)
+  const flashAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (isDetected) {
+      flashAnim.setValue(1);
+      Animated.timing(flashAnim, {
+        toValue: 0,
+        duration: 1500,
+        useNativeDriver: false,
+      }).start();
+    }
+  }, [isDetected, flashAnim]);
+  const animatedBackgroundColor = flashAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['rgba(0,0,0,0)', `${tdsColors.blue500}25`],
+  });
 
   const hasCurrent = Number.isFinite(currentPrice) && currentPrice > 0;
   const diffPct = hasCurrent && item.base_price > 0
@@ -59,11 +78,11 @@ function TradeRow({ item, isLast, onPress, onToggle, isDetected, currentPrice })
   const diffSign = diffPct == null ? '' : diffPct > 0 ? '+' : '';
 
   return (
-    <TouchableOpacity
+    <AnimatedTouchable
       style={[
         styles.tradeRow,
         !isLast && styles.tradeRowBorder,
-        isDetected && { borderWidth: 2, borderColor: detectedBorderColor },
+        { backgroundColor: animatedBackgroundColor },
       ]}
       onPress={() => onPress(item)}
       activeOpacity={0.7}
@@ -95,7 +114,7 @@ function TradeRow({ item, isLast, onPress, onToggle, isDetected, currentPrice })
         </Badge>
       </TouchableOpacity>
       <Ionicons name="chevron-forward" size={16} color={tdsDark.textTertiary} />
-    </TouchableOpacity>
+    </AnimatedTouchable>
   );
 }
 
