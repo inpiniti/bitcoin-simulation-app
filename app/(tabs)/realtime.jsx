@@ -26,6 +26,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { tdsDark, tdsColors } from '../../constants/tdsColors';
 import { Badge } from '../../components/tds/Badge';
+import { LogoBadge } from '../../components/tds/LogoBadge';
 import {
   fetchRealtimeTrades,
   toggleRealtimeTrade,
@@ -44,13 +45,16 @@ function normalizeTicker(t) {
   return String(t || '').toUpperCase().replace(/[-./]/g, '');
 }
 
-function TradeRow({ item, isLast, onPress, onToggle, isDetected, currentPrice }) {
+function TradeRow({ item, isLast, onPress, onToggle, flashTick, currentPrice }) {
   const statusBadgeColor = item.is_active ? 'blue' : 'grey';
 
   // 감지 시 옅은 파란색 → 투명으로 1.5초간 페이드 (레이아웃 변동 없음)
+  // flashTick(timestamp)이 바뀔 때마다 실행 — 연속 감지 시에도 항상 반응
   const flashAnim = useRef(new Animated.Value(0)).current;
+  const prevTickRef = useRef(flashTick);
   useEffect(() => {
-    if (isDetected) {
+    if (flashTick && flashTick !== prevTickRef.current) {
+      prevTickRef.current = flashTick;
       flashAnim.setValue(1);
       Animated.timing(flashAnim, {
         toValue: 0,
@@ -58,7 +62,7 @@ function TradeRow({ item, isLast, onPress, onToggle, isDetected, currentPrice })
         useNativeDriver: false,
       }).start();
     }
-  }, [isDetected, flashAnim]);
+  }, [flashTick, flashAnim]);
   const animatedBackgroundColor = flashAnim.interpolate({
     inputRange: [0, 1],
     outputRange: ['rgba(0,0,0,0)', `${tdsColors.blue500}25`],
@@ -87,9 +91,7 @@ function TradeRow({ item, isLast, onPress, onToggle, isDetected, currentPrice })
       onPress={() => onPress(item)}
       activeOpacity={0.7}
     >
-      <View style={styles.tradeIcon}>
-        <Ionicons name="rocket-outline" size={18} color={tdsColors.blue500} />
-      </View>
+      <LogoBadge name={item.ticker} ticker={item.ticker} size={36} />
       <View style={styles.tradeInfo}>
         <Text style={styles.tradeTicker}>{item.ticker}</Text>
         <Text style={styles.tradeMeta}>
@@ -131,14 +133,13 @@ function EmptyState() {
 export default function RealtimeScreen() {
   const [trades, setTrades] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [detectedIds, setDetectedIds] = useState(new Set());
+  const [detectedTicks, setDetectedTicks] = useState({}); // { tradeId: timestamp }
   const [detectionRunning, setDetectionRunning] = useState(false);
   const [startingDetection, setStartingDetection] = useState(false);
   const [currentPrices, setCurrentPrices] = useState({}); // { normalizedTicker: price }
 
   const wsRef = useRef(null);
   const tradesRef = useRef([]);
-  const detectionTimeoutsRef = useRef({});
 
   // 최신 trades를 ref에 동기화 (WS 콜백에서 참조용)
   useEffect(() => {
@@ -163,25 +164,9 @@ export default function RealtimeScreen() {
     }
   }, []);
 
-  // 가격 감지 시 해당 trade에 빨간 테두리 3초
+  // 가격 감지 시 timestamp 업데이트 → TradeRow가 항상 새로운 값으로 animation 실행
   const flashDetection = useCallback((tradeId) => {
-    setDetectedIds((prev) => {
-      const next = new Set(prev);
-      next.add(tradeId);
-      return next;
-    });
-
-    if (detectionTimeoutsRef.current[tradeId]) {
-      clearTimeout(detectionTimeoutsRef.current[tradeId]);
-    }
-    detectionTimeoutsRef.current[tradeId] = setTimeout(() => {
-      setDetectedIds((prev) => {
-        const next = new Set(prev);
-        next.delete(tradeId);
-        return next;
-      });
-      delete detectionTimeoutsRef.current[tradeId];
-    }, 3000);
+    setDetectedTicks((prev) => ({ ...prev, [tradeId]: Date.now() }));
   }, []);
 
   // 백엔드 WS 메시지 파싱 (JSON: { ticker, price, rate, mtyp, khms })
@@ -283,8 +268,6 @@ export default function RealtimeScreen() {
         try { wsRef.current.close(); } catch (_e) {}
         wsRef.current = null;
       }
-      Object.values(detectionTimeoutsRef.current).forEach(clearTimeout);
-      detectionTimeoutsRef.current = {};
     };
   }, [initializeRealtime]);
 
@@ -431,7 +414,7 @@ export default function RealtimeScreen() {
                   isLast={i === trades.length - 1}
                   onPress={handlePress}
                   onToggle={handleToggle}
-                  isDetected={detectedIds.has(trade.id)}
+                  flashTick={detectedTicks[trade.id]}
                   currentPrice={currentPrices[normalizeTicker(trade.ticker)]}
                 />
               ))}
@@ -547,15 +530,6 @@ const styles = StyleSheet.create({
   tradeRowBorder: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: tdsDark.border,
-  },
-  tradeIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: `${tdsColors.blue500}15`,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
   },
   tradeInfo: {
     flex: 1,
