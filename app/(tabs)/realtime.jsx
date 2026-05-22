@@ -33,6 +33,7 @@ import {
   fetchDetectionStatus,
   startDetection,
 } from '../../lib/realtimeApi';
+import { getStoredJwt } from '../../lib/authApi';
 
 const API_BASE =
   process.env.EXPO_PUBLIC_API_BASE_URL ||
@@ -197,10 +198,16 @@ export default function RealtimeScreen() {
   );
 
   // 백엔드 WebSocket 연결 (KIS 직접 연결 제거 — 백엔드가 중계)
-  const connectAndSubscribe = useCallback(() => {
+  const connectAndSubscribe = useCallback(async () => {
     try {
-      console.log(`[Backend WS] 연결 시도: ${BACKEND_WS_URL}`);
-      const ws = new WebSocket(BACKEND_WS_URL);
+      const jwt = await getStoredJwt();
+      if (!jwt) {
+        console.log('[Backend WS] JWT 없음 - 연결 생략 (비로그인)');
+        return;
+      }
+      const wsUrl = `${BACKEND_WS_URL}?token=${encodeURIComponent(jwt)}`;
+      console.log('[Backend WS] 연결 시도');
+      const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => console.log('[Backend WS] 연결 성공 ✓');

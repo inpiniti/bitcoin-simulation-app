@@ -1,7 +1,6 @@
 import { Redirect } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-  Alert,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -16,7 +15,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Button } from '../components/tds/Button';
 import { tdsColors, tdsDark } from '../constants/tdsColors';
 import { clearKisAuth, loginKis } from '../lib/kisApi';
-import { ensureWebSocketKey, saveKisCredentials } from '../lib/realtimeApi';
+import { kisLogin, clearAuth } from '../lib/authApi';
 import useStore from '../store/useStore';
 
 const KIS_CREDENTIALS_KEY = 'kis.credentials.v1';
@@ -58,6 +57,7 @@ export default function LoginScreen() {
 
   const handleGuest = () => {
     clearKisAuth();
+    clearAuth(); // 저장된 JWT 제거 → anon으로 동작 (남의 데이터 안 보임)
     startGuestSession();
   };
 
@@ -69,6 +69,7 @@ export default function LoginScreen() {
     }
     setLoading(true);
     try {
+      // 1. KIS 직접 로그인 — 앱 내 잔고/주문 조회용 토큰(메모리)
       await loginKis({
         accountNo: accountNo.trim(),
         appkey: appkey.trim(),
@@ -84,30 +85,19 @@ export default function LoginScreen() {
         }),
       );
 
-      // WebSocket 키 자동 발급 (로그인 후 실행)
-      const wsKeyResult = await ensureWebSocketKey(appkey.trim(), appsecret.trim());
-      if (!wsKeyResult.success) {
-        Alert.alert(
-          '⚠️ WebSocket 키 발급',
-          `키 발급에 실패했습니다.\n\n오류: ${wsKeyResult.error?.message || '알 수 없는 오류'}\n\n(실시간 매매 사용 시에만 필요합니다)`,
-          [{ text: '확인', onPress: () => {} }]
-        );
-      }
-
-      // KIS 자격증명을 Supabase에 저장 (서버 자동매매용)
-      const credResult = await saveKisCredentials({
+      // 2. 백엔드 멀티유저 인증 — RLS용 JWT/user_id 발급.
+      //    서버측 자격증명 저장·웹소켓 키 발급도 백엔드가 함께 처리한다.
+      const { data: authData, error: authError } = await kisLogin({
         accountNo: accountNo.trim(),
         appkey: appkey.trim(),
         appsecret: appsecret.trim(),
       });
-      if (credResult.error) {
-        Alert.alert(
-          '⚠️ 자격증명 저장',
-          `Supabase 저장 실패: ${credResult.error.message || '알 수 없는 오류'}\n\n(서버 자동매매가 동작하지 않을 수 있습니다)`
-        );
+      if (authError) {
+        setError(authError.message || '서버 인증에 실패했어요.');
+        return;
       }
 
-      startLoginSession({ accountNo: accountNo.trim() });
+      startLoginSession({ accountNo: accountNo.trim(), userId: authData.user_id });
     } catch (e) {
       setError(e.message || '로그인에 실패했어요.');
     } finally {
