@@ -317,6 +317,11 @@ export default function RealtimeScreen() {
       return;
     }
 
+    if (data?.status === 'unauthorized') {
+      Alert.alert('로그인 필요', '실시간 감지는 로그인 후 이용할 수 있어요.');
+      return;
+    }
+
     Alert.alert(
       data?.status === 'started' ? '✅ 시작됨' : '이미 실행 중',
       data?.status === 'started' ? '실시간 감지가 시작되었습니다.' : '서버 감지가 이미 동작 중입니다.'
