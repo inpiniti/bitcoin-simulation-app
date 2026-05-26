@@ -20,7 +20,7 @@ import { ListRow } from '../../components/tds/ListRow';
 import { Button } from '../../components/tds/Button';
 import { BottomSheet } from '../../components/tds/BottomSheet';
 import { SegmentControl } from '../../components/tds/SegmentControl';
-import { fetchKisFullBalance, submitKisOrder } from '../../lib/kisApi';
+import { fetchKisFullBalance, fetchKisDomesticBalance, submitKisOrder } from '../../lib/kisApi';
 import { fetchDetectionStatus } from '../../lib/realtimeApi';
 import { sampleAccount } from '../../lib/sampleData';
 import useStore from '../../store/useStore';
@@ -128,6 +128,8 @@ function HoldingRow({ item, currency, flashTick, onPress }) {
 export default function AccountScreen() {
   const authMode = useStore((s) => s.authMode);
   const [fullData, setFullData] = useState(null);
+  const [domesticData, setDomesticData] = useState(null);
+  const [marketType, setMarketType] = useState('overseas'); // 'overseas' | 'domestic'
   const [currency, setCurrency] = useState('KRW'); // 'KRW' | 'USD'
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -145,13 +147,16 @@ export default function AccountScreen() {
     async (isRefresh = false) => {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
-      
+
       if (authMode === 'guest' || authMode === 'locked') {
-        // 샘플 데이터 구성
         setFullData({
           krw: { totalAsset: 125400000, evalAmount: 85400000, depositAmount: 40000000, profitRate: 12.5, profitAmount: 9500000 },
           usd: { totalAsset: 92450, evalAmount: 62450, depositAmount: 30000, profitRate: 15.2, profitAmount: 8200 },
           holdings: sampleAccount.balance
+        });
+        setDomesticData({
+          summary: { totalAsset: 85000000, evalAmount: 55000000, depositAmount: 30000000, profitRate: 8.5, profitAmount: 4200000 },
+          holdings: []
         });
         setNotice('비로그인 모드라서 샘플 계좌 데이터를 보여주고 있어요.');
         setLoading(false);
@@ -160,8 +165,12 @@ export default function AccountScreen() {
       }
 
       try {
-        const data = await fetchKisFullBalance();
-        setFullData(data);
+        const [overseasRes, domesticRes] = await Promise.all([
+          fetchKisFullBalance().catch(() => null),
+          fetchKisDomesticBalance().catch(() => null),
+        ]);
+        setFullData(overseasRes || { krw: {}, usd: {}, holdings: [] });
+        setDomesticData(domesticRes || { summary: {}, holdings: [] });
         setNotice(null);
       } catch (e) {
         setNotice('연결 전 화면을 미리 보고 있어요. 계좌 정보는 샘플 데이터로 보여주고 있어요.');
@@ -169,6 +178,10 @@ export default function AccountScreen() {
           krw: { totalAsset: 125400000, evalAmount: 85400000, depositAmount: 40000000, profitRate: 12.5, profitAmount: 9500000 },
           usd: { totalAsset: 92450, evalAmount: 62450, depositAmount: 30000, profitRate: 15.2, profitAmount: 8200 },
           holdings: sampleAccount.balance
+        });
+        setDomesticData({
+          summary: { totalAsset: 85000000, evalAmount: 55000000, depositAmount: 30000000, profitRate: 8.5, profitAmount: 4200000 },
+          holdings: []
         });
       } finally {
         setLoading(false);
@@ -234,9 +247,13 @@ export default function AccountScreen() {
     return () => sub.remove();
   }, [connectWs]);
 
-  // ─── 실시간 가격 반영한 holdings/summary 계산 ────────────────────
-  const baseSummary = currency === 'KRW' ? fullData?.krw : fullData?.usd;
-  const baseBalance = fullData?.holdings || [];
+  // ─── 마켓별 데이터 선택 ────────────────────────────────────────────
+  const isOverseas = marketType === 'overseas';
+  const selectedData = isOverseas ? fullData : domesticData;
+  const baseSummary = isOverseas
+    ? (currency === 'KRW' ? fullData?.krw : fullData?.usd)
+    : domesticData?.summary;
+  const baseBalance = selectedData?.holdings || [];
 
   // 실시간 가격이 있는 종목은 평가금액/수익률을 재계산.
   // KRW는 보유데이터의 (current_price_krw / current_price_usd) 비율을 환율로 사용.
@@ -306,15 +323,28 @@ export default function AccountScreen() {
             <Text style={styles.headerEyebrow}>계좌 · 자산</Text>
             <Text style={styles.headerTitle}>내 자산</Text>
           </View>
-          <SegmentControl
-            tabs={[
-              { key: 'KRW', label: '원화' },
-              { key: 'USD', label: '달러' },
-            ]}
-            activeTab={currency}
-            onTabChange={setCurrency}
-            style={styles.headerToggle}
-          />
+          <View style={{ gap: 8 }}>
+            <SegmentControl
+              tabs={[
+                { key: 'domestic', label: '국내' },
+                { key: 'overseas', label: '미국' },
+              ]}
+              activeTab={marketType}
+              onTabChange={setMarketType}
+              style={styles.headerToggle}
+            />
+            {isOverseas && (
+              <SegmentControl
+                tabs={[
+                  { key: 'KRW', label: '원화' },
+                  { key: 'USD', label: '달러' },
+                ]}
+                activeTab={currency}
+                onTabChange={setCurrency}
+                style={styles.headerToggle}
+              />
+            )}
+          </View>
         </View>
 
         {notice && (
@@ -328,24 +358,24 @@ export default function AccountScreen() {
         ) : (
           <>
             <View style={styles.depositSection}>
-              <Text style={styles.depositSubLabel}>실 자산 ({currency})</Text>
-              <Text style={styles.depositAmount}>{formatCurrency(currentSummary?.totalAsset, currency)}</Text>
+              <Text style={styles.depositSubLabel}>실 자산 ({isOverseas ? currency : 'KRW'})</Text>
+              <Text style={styles.depositAmount}>{formatCurrency(currentSummary?.totalAsset, isOverseas ? currency : 'KRW')}</Text>
               <View style={styles.depositSubRow}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.depositItemLabel}>예수금</Text>
-                  <Text style={styles.depositItemValue}>{formatCurrency(currentSummary?.depositAmount, currency)}</Text>
+                  <Text style={styles.depositItemValue}>{formatCurrency(currentSummary?.depositAmount, isOverseas ? currency : 'KRW')}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.depositItemLabel}>평가금액</Text>
-                  <Text style={styles.depositItemValue}>{formatCurrency(currentSummary?.evalAmount, currency)}</Text>
+                  <Text style={styles.depositItemValue}>{formatCurrency(currentSummary?.evalAmount, isOverseas ? currency : 'KRW')}</Text>
                 </View>
               </View>
             </View>
 
-            <PortfolioSummary 
-              balance={balance} 
-              summary={currentSummary} 
-              currency={currency} 
+            <PortfolioSummary
+              balance={balance}
+              summary={currentSummary}
+              currency={isOverseas ? currency : 'KRW'}
             />
 
             <View style={styles.holdingsHeader}>
@@ -357,7 +387,7 @@ export default function AccountScreen() {
                 <HoldingRow
                   key={item.ticker}
                   item={item}
-                  currency={currency}
+                  currency={isOverseas ? currency : 'KRW'}
                   flashTick={liveTicks[normalizeTicker(item.ticker)]}
                   onPress={(it) => {
                     setSelected(it);
@@ -382,30 +412,31 @@ export default function AccountScreen() {
         }
       >
         {selected && (() => {
-          const evalAmt = currency === 'USD' ? selected.eval_amount_usd : selected.eval_amount_krw;
-          const buyAmt = currency === 'USD' ? selected.buy_amount_usd : selected.buy_amount_krw;
-          const curPrice = currency === 'USD' ? selected.current_price_usd : selected.current_price_krw;
-          const profitAmt = currency === 'USD' ? selected.profit_amount_usd : selected.profit_amount_krw;
+          const cur = isOverseas ? currency : 'KRW';
+          const evalAmt = cur === 'USD' ? selected.eval_amount_usd : (selected.eval_amount_krw || selected.eval_amount);
+          const buyAmt = cur === 'USD' ? selected.buy_amount_usd : (selected.buy_amount_krw || selected.buy_amount);
+          const curPrice = cur === 'USD' ? selected.current_price_usd : (selected.current_price_krw || selected.current_price);
+          const profitAmt = cur === 'USD' ? selected.profit_amount_usd : (selected.profit_amount_krw || selected.profit_amount);
           return (
             <View style={{ paddingBottom: 20 }}>
               <Text style={styles.sheetCode}>{selected.ticker}</Text>
-              <Text style={styles.sheetPriceMain}>{formatCurrency(curPrice, currency)}</Text>
+              <Text style={styles.sheetPriceMain}>{formatCurrency(curPrice, cur)}</Text>
               <View style={styles.orderRow}>
                 <Text style={styles.sheetLabel}>보유 수량</Text>
                 <Text style={styles.sheetValue}>{selected.qty}주</Text>
               </View>
               <View style={styles.orderRow}>
                 <Text style={styles.sheetLabel}>매입금액</Text>
-                <Text style={styles.sheetValue}>{formatCurrency(buyAmt, currency)}</Text>
+                <Text style={styles.sheetValue}>{formatCurrency(buyAmt, cur)}</Text>
               </View>
               <View style={styles.orderRow}>
                 <Text style={styles.sheetLabel}>평가금액</Text>
-                <Text style={styles.sheetValue}>{formatCurrency(evalAmt, currency)}</Text>
+                <Text style={styles.sheetValue}>{formatCurrency(evalAmt, cur)}</Text>
               </View>
               <View style={styles.orderRow}>
                 <Text style={styles.sheetLabel}>평가손익</Text>
                 <Text style={[styles.sheetValue, { color: getPriceColor(profitAmt) }]}>
-                  {formatSignedCurrency(profitAmt, currency)}
+                  {formatSignedCurrency(profitAmt, cur)}
                 </Text>
               </View>
             </View>

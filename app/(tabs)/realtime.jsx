@@ -27,6 +27,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { tdsDark, tdsColors } from '../../constants/tdsColors';
 import { Badge } from '../../components/tds/Badge';
 import { LogoBadge } from '../../components/tds/LogoBadge';
+import { SegmentControl } from '../../components/tds/SegmentControl';
 import {
   fetchRealtimeTrades,
   toggleRealtimeTrade,
@@ -133,6 +134,7 @@ function EmptyState() {
 
 export default function RealtimeScreen() {
   const [trades, setTrades] = useState([]);
+  const [marketFilter, setMarketFilter] = useState('all'); // 'all' | 'domestic' | 'overseas'
   const [loading, setLoading] = useState(true);
   const [detectedTicks, setDetectedTicks] = useState({}); // { tradeId: timestamp }
   const [detectionRunning, setDetectionRunning] = useState(false);
@@ -360,6 +362,13 @@ export default function RealtimeScreen() {
     }
   };
 
+  // 마켓별 필터링
+  const filteredTrades = trades.filter((trade) => {
+    if (marketFilter === 'all') return true;
+    const isDomestic = ['KRX', 'KOSDAQ'].includes(trade.market);
+    return marketFilter === 'domestic' ? isDomestic : !isDomestic;
+  });
+
   return (
     <SafeAreaView style={styles.safe}>
       {/* 헤더 */}
@@ -398,6 +407,20 @@ export default function RealtimeScreen() {
         )}
       </View>
 
+      {/* 마켓 필터 탭 */}
+      <View style={styles.filterRow}>
+        <SegmentControl
+          tabs={[
+            { key: 'all', label: '전체' },
+            { key: 'domestic', label: '국내' },
+            { key: 'overseas', label: '미국' },
+          ]}
+          activeTab={marketFilter}
+          onTabChange={setMarketFilter}
+          style={styles.filterControl}
+        />
+      </View>
+
       {/* + 실시간 매매 버튼 */}
       <TouchableOpacity
         style={styles.addRow}
@@ -415,15 +438,15 @@ export default function RealtimeScreen() {
         </View>
       ) : (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollContent}>
-          {trades.length === 0 ? (
+          {filteredTrades.length === 0 ? (
             <EmptyState />
           ) : (
             <View style={styles.listCard}>
-              {trades.map((trade, i) => (
+              {filteredTrades.map((trade, i) => (
                 <TradeRow
                   key={trade.id}
                   item={trade}
-                  isLast={i === trades.length - 1}
+                  isLast={i === filteredTrades.length - 1}
                   onPress={handlePress}
                   onToggle={handleToggle}
                   flashTick={detectedTicks[trade.id]}
@@ -504,6 +527,15 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 13,
     fontWeight: '700',
+  },
+  filterRow: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+  },
+  filterControl: {
+    width: '100%',
+    marginHorizontal: 0,
+    marginVertical: 0,
   },
   addRow: {
     flexDirection: 'row',
