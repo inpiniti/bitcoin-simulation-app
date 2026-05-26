@@ -47,7 +47,7 @@ function normalizeTicker(t) {
   return String(t || '').toUpperCase().replace(/[-./]/g, '');
 }
 
-function TradeRow({ item, isLast, onPress, onToggle, flashTick, currentPrice }) {
+function TradeRow({ item, isLast, onPress, onToggle, flashTick, currentPrice, currentBase }) {
   const statusBadgeColor = item.is_active ? 'blue' : 'grey';
 
   // 감지 시 옅은 파란색 → 투명으로 1.5초간 페이드 (레이아웃 변동 없음)
@@ -71,8 +71,10 @@ function TradeRow({ item, isLast, onPress, onToggle, flashTick, currentPrice }) 
   });
 
   const hasCurrent = Number.isFinite(currentPrice) && currentPrice > 0;
-  const diffPct = hasCurrent && item.base_price > 0
-    ? ((currentPrice - item.base_price) / item.base_price) * 100
+  // 백엔드가 슬라이딩한 실시간 기준가 우선, 없으면 DB 적재값으로 폴백
+  const basePrice = Number.isFinite(currentBase) && currentBase > 0 ? currentBase : item.base_price;
+  const diffPct = hasCurrent && basePrice > 0
+    ? ((currentPrice - basePrice) / basePrice) * 100
     : null;
   const diffColor = diffPct == null
     ? tdsDark.textTertiary
@@ -97,7 +99,7 @@ function TradeRow({ item, isLast, onPress, onToggle, flashTick, currentPrice }) 
       <View style={styles.tradeInfo}>
         <Text style={styles.tradeTicker}>{item.ticker}</Text>
         <Text style={styles.tradeMeta}>
-          {item.market} · 기준 ${item.base_price.toFixed(2)} · {item.gap}% × {item.gap_qty ?? 1}주 · 보유 {item.quantity}주
+          {item.market} · 기준 ${basePrice.toFixed(2)} · {item.gap}% × {item.gap_qty ?? 1}주 · 보유 {item.quantity}주
         </Text>
       </View>
       <View style={styles.tradePriceBlock}>
@@ -140,6 +142,7 @@ export default function RealtimeScreen() {
   const [detectionRunning, setDetectionRunning] = useState(false);
   const [startingDetection, setStartingDetection] = useState(false);
   const [currentPrices, setCurrentPrices] = useState({}); // { normalizedTicker: price }
+  const [currentBases, setCurrentBases] = useState({}); // { normalizedTicker: base_price } — 백엔드 슬라이딩 반영
 
   const wsRef = useRef(null);
   const tradesRef = useRef([]);
@@ -176,7 +179,7 @@ export default function RealtimeScreen() {
   const handleWsMessage = useCallback(
     (raw) => {
       try {
-        const { ticker, price, mtyp, khms } = JSON.parse(raw);
+        const { ticker, price, base_price, mtyp, khms } = JSON.parse(raw);
         const mtypLabel = { '1': '장중', '2': '장전', '3': '장후' }[mtyp] || `MTYP=${mtyp}`;
         console.log(`[Backend WS] 가격 수신 - ${ticker}: ${price} (${khms}, ${mtypLabel})`);
 
@@ -184,6 +187,10 @@ export default function RealtimeScreen() {
         const numPrice = Number(price);
         if (Number.isFinite(numPrice) && numPrice > 0) {
           setCurrentPrices((prev) => ({ ...prev, [normalized]: numPrice }));
+        }
+        const numBase = Number(base_price);
+        if (Number.isFinite(numBase) && numBase > 0) {
+          setCurrentBases((prev) => ({ ...prev, [normalized]: numBase }));
         }
 
         const trade = tradesRef.current.find(
@@ -451,6 +458,7 @@ export default function RealtimeScreen() {
                   onToggle={handleToggle}
                   flashTick={detectedTicks[trade.id]}
                   currentPrice={currentPrices[normalizeTicker(trade.ticker)]}
+                  currentBase={currentBases[normalizeTicker(trade.ticker)]}
                 />
               ))}
             </View>
