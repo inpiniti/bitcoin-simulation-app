@@ -22,6 +22,7 @@ import { BottomSheet } from '../../components/tds/BottomSheet';
 import { SegmentControl } from '../../components/tds/SegmentControl';
 import { fetchKisFullBalance, fetchKisDomesticBalance, submitKisOrder } from '../../lib/kisApi';
 import { fetchDetectionStatus } from '../../lib/realtimeApi';
+import { getStoredJwt } from '../../lib/authApi';
 import { sampleAccount } from '../../lib/sampleData';
 import useStore from '../../store/useStore';
 import { getPriceColor, formatRate, formatPrice } from '../../utils/price';
@@ -43,7 +44,7 @@ function formatCurrency(value, currency) {
   if (currency === 'USD') {
     return `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   }
-  return `₩${value.toLocaleString('ko-KR')}`;
+  return `₩${Math.round(value).toLocaleString('ko-KR')}`;
 }
 
 function formatSignedCurrency(value, currency) {
@@ -204,7 +205,9 @@ export default function AccountScreen() {
     try {
       const { data: statusData } = await fetchDetectionStatus();
       if (!statusData?.running) return; // 서버 감지 안 돌면 연결 안 함
-      const ws = new WebSocket(BACKEND_WS_URL);
+      const jwt = await getStoredJwt();
+      if (!jwt) return; // 백엔드 WS는 ?token=<JWT> 없으면 4401로 끊음
+      const ws = new WebSocket(`${BACKEND_WS_URL}?token=${encodeURIComponent(jwt)}`);
       wsRef.current = ws;
       ws.onmessage = (event) => {
         try {
