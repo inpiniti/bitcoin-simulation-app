@@ -128,9 +128,10 @@ function HoldingRow({ item, currency, flashTick, onPress }) {
 
 export default function AccountScreen() {
   const authMode = useStore((s) => s.authMode);
+  const marketType = useStore((s) => s.marketType); // 'overseas' | 'domestic' — 포트폴리오 탭과 공유
+  const setMarketType = useStore((s) => s.setMarketType);
   const [fullData, setFullData] = useState(null);
   const [domesticData, setDomesticData] = useState(null);
-  const [marketType, setMarketType] = useState('overseas'); // 'overseas' | 'domestic'
   const [currency, setCurrency] = useState('KRW'); // 'KRW' | 'USD'
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);

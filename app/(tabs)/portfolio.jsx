@@ -22,18 +22,21 @@ import { ListRow } from '../../components/tds/ListRow';
 import { LogoBadge } from '../../components/tds/LogoBadge';
 import { BottomSheet } from '../../components/tds/BottomSheet';
 import { fetchPortfolioData, fetchClosePrices } from '../../lib/portfolioApi';
-import { fetchKisFullBalance } from '../../lib/kisApi';
+import { fetchKisFullBalance, fetchKisDomesticBalance, fetchKospiMarketCap } from '../../lib/kisApi';
 import { PORTFOLIO_DATA as FALLBACK_DATA } from '../../lib/portfolioData';
 import { formatPrice } from '../../utils/price';
 import useStore from '../../store/useStore';
 
 const PORTFOLIO_SETTINGS_KEY = 'portfolio:settings:v1';
+const DEFAULT_KRW_ASSETS = 10000000; // 국장 기본 총자산 1천만 원
 
 // ─── 유틸리티 ───────────────────────────────────────────────────────────────
 
 function getMarketFromExchange(exchange) {
   if (!exchange) return 'NAS'; // 기본값
   const upperEx = exchange.toUpperCase();
+  if (upperEx === 'KRX' || upperEx.includes('KOSPI')) return 'KRX';
+  if (upperEx === 'KOSDAQ') return 'KOSDAQ';
   if (upperEx.includes('NYSE') || upperEx === 'NYS') return 'NYS';
   if (upperEx.includes('NASDAQ') || upperEx === 'NAS') return 'NAS';
   return 'NAS'; // 기본값
@@ -72,6 +75,12 @@ function ValueStepper({ label, value, onValueChange, step, min, max, unit = '' }
 
 export default function PortfolioScreen() {
   const authMode = useStore((s) => s.authMode);
+  const marketType = useStore((s) => s.marketType); // 계좌 탭과 공유
+  const isDomestic = marketType === 'domestic';
+  const fmtPrice = (v) =>
+    isDomestic
+      ? `₩${Math.round(Number(v) || 0).toLocaleString('ko-KR')}`
+      : `$${v}`;
   const [data, setData] = useState({ based_on_person: [], based_on_stock: [], meta: {} });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -121,6 +130,35 @@ export default function PortfolioScreen() {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     try {
+      // ── 국장 모드: 코스피200 시총 순 ──
+      if (isDomestic) {
+        const rows = await fetchKospiMarketCap('2001');
+        const based_on_stock = rows.map((r) => ({
+          stock: r.stock,
+          name: r.name,
+          close: r.close > 0 ? r.close : null,
+          market_cap: r.market_cap,
+          sum_ratio: r.market_cap, // 시총을 비중 가중값으로 사용
+          person_count: 0,
+          exchange: 'KRX',
+          change_rate: r.change_rate,
+        }));
+        setData({ based_on_person: [], based_on_stock, meta: { source: 'kis-kospi200' } });
+
+        // 총자산: 국내 실자산(KRW)
+        if (authMode !== 'guest' && authMode !== 'locked') {
+          try {
+            const dom = await fetchKisDomesticBalance();
+            setTotalAssets(dom?.summary?.totalAsset > 0 ? dom.summary.totalAsset : DEFAULT_KRW_ASSETS);
+          } catch {
+            setTotalAssets(DEFAULT_KRW_ASSETS);
+          }
+        } else {
+          setTotalAssets(DEFAULT_KRW_ASSETS);
+        }
+        return;
+      }
+
       // 1. 포트폴리오 메타 데이터 조회
       const result = await fetchPortfolioData();
 
@@ -152,12 +190,16 @@ export default function PortfolioScreen() {
       }
     } catch (err) {
       console.warn('[Portfolio] Load failed, using fallback');
-      setData({ based_on_person: [], based_on_stock: FALLBACK_DATA, meta: { source: 'fallback' } });
+      if (isDomestic) {
+        setData({ based_on_person: [], based_on_stock: [], meta: { source: 'error' } });
+      } else {
+        setData({ based_on_person: [], based_on_stock: FALLBACK_DATA, meta: { source: 'fallback' } });
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [authMode]);
+  }, [authMode, isDomestic]);
 
   useEffect(() => {
     load();
@@ -168,9 +210,13 @@ export default function PortfolioScreen() {
     if (!data.based_on_stock.length) return [];
 
     const getWeightValue = (s) =>
-      Number(weightMode === 'investor' ? s.person_count : s.sum_ratio) || 0;
+      isDomestic
+        ? Number(s.market_cap) || 0
+        : Number(weightMode === 'investor' ? s.person_count : s.sum_ratio) || 0;
     const getSortValue = (s) =>
-      Number(sortMode === 'investor' ? s.person_count : s.sum_ratio) || 0;
+      isDomestic
+        ? Number(s.market_cap) || 0
+        : Number(sortMode === 'investor' ? s.person_count : s.sum_ratio) || 0;
 
     const sorted = [...data.based_on_stock].sort(
       (a, b) => getSortValue(b) - getSortValue(a),
@@ -192,14 +238,16 @@ export default function PortfolioScreen() {
       const weightPercent = weightRatio * (1 - cashRatio) * 100;
       return { ...s, suggestedQty: qty, allocation, weightPercent };
     });
-  }, [data, totalAssets, tickerCount, cashRatio, sortMode, weightMode]);
+  }, [data, totalAssets, tickerCount, cashRatio, sortMode, weightMode, isDomestic]);
 
   const renderHeader = () => (
     <View style={styles.header}>
       <Text style={styles.headerEyebrow}>포트폴리오 가이드</Text>
       <Text style={styles.headerTitle}>현명한 투자자 포트폴리오</Text>
       <Text style={styles.headerSub}>
-        유명 투자자 80명의 보유 데이터를 종합해 비중 가이드를 제안합니다.
+        {isDomestic
+          ? '코스피200 종목을 시가총액 비중으로 가이드합니다.'
+          : '유명 투자자 80명의 보유 데이터를 종합해 비중 가이드를 제안합니다.'}
       </Text>
     </View>
   );
@@ -223,7 +271,9 @@ export default function PortfolioScreen() {
     return (
       <View style={styles.chartSection}>
         <Text style={styles.sectionTitle}>선택 종목 · {tickerCount}</Text>
-        <Text style={styles.chartSubText}>투자자 데이터 기반의 참고 수치입니다.</Text>
+        <Text style={styles.chartSubText}>
+          {isDomestic ? '코스피200 시가총액 기반의 참고 수치입니다.' : '투자자 데이터 기반의 참고 수치입니다.'}
+        </Text>
 
         {/* Stacked Bar Chart */}
         <View style={styles.stackedBar}>
@@ -258,13 +308,13 @@ export default function PortfolioScreen() {
   const renderSummaryCard = () => (
     <View style={styles.summaryCard}>
       <View style={styles.summaryRow}>
-        <Text style={styles.summaryLabel}>총자산 (USD)</Text>
+        <Text style={styles.summaryLabel}>총자산 ({isDomestic ? 'KRW' : 'USD'})</Text>
         <TextInput
           style={styles.assetsInput}
           value={String(totalAssets)}
           onChangeText={(val) => setTotalAssets(Number(val.replace(/[^0-9]/g, '')))}
           keyboardType="numeric"
-          placeholder="달러로 입력"
+          placeholder={isDomestic ? '원으로 입력' : '달러로 입력'}
         />
       </View>
       <View style={styles.divider} />
@@ -287,42 +337,44 @@ export default function PortfolioScreen() {
         </View>
       </View>
       
-      <View style={styles.modeToggleRow}>
-        <View style={styles.modeToggleItem}>
-          <Text style={styles.modeLabel}>정렬 기준</Text>
-          <View style={styles.modeBtnGroup}>
-            <TouchableOpacity 
-              onPress={() => setSortMode('investor')}
-              style={[styles.modeBtn, sortMode === 'investor' && styles.modeBtnActive]}
-            >
-              <Text style={[styles.modeBtnText, sortMode === 'investor' && styles.modeBtnTextActive]}>투자자 수</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              onPress={() => setSortMode('ratio')}
-              style={[styles.modeBtn, sortMode === 'ratio' && styles.modeBtnActive]}
-            >
-              <Text style={[styles.modeBtnText, sortMode === 'ratio' && styles.modeBtnTextActive]}>비중 합계</Text>
-            </TouchableOpacity>
+      {!isDomestic && (
+        <View style={styles.modeToggleRow}>
+          <View style={styles.modeToggleItem}>
+            <Text style={styles.modeLabel}>정렬 기준</Text>
+            <View style={styles.modeBtnGroup}>
+              <TouchableOpacity
+                onPress={() => setSortMode('investor')}
+                style={[styles.modeBtn, sortMode === 'investor' && styles.modeBtnActive]}
+              >
+                <Text style={[styles.modeBtnText, sortMode === 'investor' && styles.modeBtnTextActive]}>투자자 수</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setSortMode('ratio')}
+                style={[styles.modeBtn, sortMode === 'ratio' && styles.modeBtnActive]}
+              >
+                <Text style={[styles.modeBtnText, sortMode === 'ratio' && styles.modeBtnTextActive]}>비중 합계</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+          <View style={styles.modeToggleItem}>
+            <Text style={styles.modeLabel}>비중 산정 기준</Text>
+            <View style={styles.modeBtnGroup}>
+              <TouchableOpacity
+                onPress={() => setWeightMode('ratio')}
+                style={[styles.modeBtn, weightMode === 'ratio' && styles.modeBtnActive]}
+              >
+                <Text style={[styles.modeBtnText, weightMode === 'ratio' && styles.modeBtnTextActive]}>비중 합계</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setWeightMode('investor')}
+                style={[styles.modeBtn, weightMode === 'investor' && styles.modeBtnActive]}
+              >
+                <Text style={[styles.modeBtnText, weightMode === 'investor' && styles.modeBtnTextActive]}>투자자 수</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
-        <View style={styles.modeToggleItem}>
-          <Text style={styles.modeLabel}>비중 산정 기준</Text>
-          <View style={styles.modeBtnGroup}>
-            <TouchableOpacity 
-              onPress={() => setWeightMode('ratio')}
-              style={[styles.modeBtn, weightMode === 'ratio' && styles.modeBtnActive]}
-            >
-              <Text style={[styles.modeBtnText, weightMode === 'ratio' && styles.modeBtnTextActive]}>비중 합계</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              onPress={() => setWeightMode('investor')}
-              style={[styles.modeBtn, weightMode === 'investor' && styles.modeBtnActive]}
-            >
-              <Text style={[styles.modeBtnText, weightMode === 'investor' && styles.modeBtnTextActive]}>투자자 수</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
+      )}
     </View>
   );
 
@@ -356,8 +408,12 @@ export default function PortfolioScreen() {
                   setShowActionSheet(true);
                 }}
                 left={<View style={styles.rankWrap}><Text style={styles.rankText}>{idx + 1}</Text><LogoBadge name={item.name} ticker={item.stock} size={40} /></View>}
-                title={`${item.stock}${item.person_count ? `  · 투자자 ${item.person_count}명` : ''}`}
-                subtitle={`${item.name || item.stock}${item.close ? ` · $${item.close}` : ''}`}
+                title={isDomestic
+                  ? (item.name || item.stock)
+                  : `${item.stock}${item.person_count ? `  · 투자자 ${item.person_count}명` : ''}`}
+                subtitle={isDomestic
+                  ? `${item.stock}${item.close ? ` · ${fmtPrice(item.close)}` : ''}`
+                  : `${item.name || item.stock}${item.close ? ` · ${fmtPrice(item.close)}` : ''}`}
                 right={
                   <View style={styles.rightBlock}>
                     <Text style={styles.suggestedQtyText}>{formatNumber(item.suggestedQty)}주</Text>

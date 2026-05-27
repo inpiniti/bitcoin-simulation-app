@@ -23,12 +23,19 @@ import { createRealtimeTrade, updateRealtimeTrade, deleteRealtimeTrade } from '.
 import { fetchCurrentPrice } from '../lib/kisApi';
 
 const MARKETS = [
+  { key: 'KRX', label: '코스피 (KRX)' },
+  { key: 'KOSDAQ', label: '코스닥 (KOSDAQ)' },
   { key: 'NYS', label: '뉴욕 (NYS)' },
   { key: 'NAS', label: '나스닥 (NAS)' },
   { key: 'AMS', label: '아멕스 (AMS)' },
   { key: 'HKS', label: '홍콩 (HKS)' },
   { key: 'TSE', label: '도쿄 (TSE)' },
 ];
+
+/** 국내주식 시장 여부 (코스피/코스닥) */
+function isDomesticMarket(market) {
+  return market === 'KRX' || market === 'KOSDAQ';
+}
 
 const DEFAULT_FORM = {
   ticker: '',
@@ -136,7 +143,10 @@ export default function RealtimeFormScreen() {
       Alert.alert('오류', error.message || '현재가 조회 실패\n\n환경변수 확인:\nEXPO_PUBLIC_KIS_APPKEY\nEXPO_PUBLIC_KIS_APPSECRET\nEXPO_PUBLIC_KIS_ACCESS_TOKEN');
     } else if (lastPrice) {
       setForm({ ...form, base_price: lastPrice });
-      Alert.alert('성공', `현재가: $${lastPrice.toFixed(2)}`);
+      const priceText = isDomesticMarket(form.market)
+        ? `₩${Math.round(lastPrice).toLocaleString('ko-KR')}`
+        : `$${lastPrice.toFixed(2)}`;
+      Alert.alert('성공', `현재가: ${priceText}`);
     }
   };
 
@@ -285,7 +295,9 @@ export default function RealtimeFormScreen() {
             </TouchableOpacity>
           </View>
           <View style={styles.inputRow}>
-            <Text style={{ marginRight: 8, fontSize: 16, color: tdsDark.textSecondary }}>$</Text>
+            <Text style={{ marginRight: 8, fontSize: 16, color: tdsDark.textSecondary }}>
+              {isDomesticMarket(form.market) ? '₩' : '$'}
+            </Text>
             <TextInput
               style={[styles.textInput, { flex: 1 }]}
               placeholder="0.00"

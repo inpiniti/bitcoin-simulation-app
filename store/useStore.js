@@ -5,6 +5,8 @@ export const useStore = create((set) => ({
   authMode: 'locked',
   accountNo: null,
   userId: null,
+  marketType: 'overseas', // 'overseas' | 'domestic' — 계좌/포트폴리오 탭 공유
+  setMarketType: (marketType) => set({ marketType }),
   setIsLoading: (loading) => set({ isLoading: loading }),
   startGuestSession: () => set({ authMode: 'guest', accountNo: null, userId: null }),
   startLoginSession: ({ accountNo, userId }) =>
