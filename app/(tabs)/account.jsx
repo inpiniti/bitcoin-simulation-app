@@ -1,5 +1,5 @@
 /**
- * 계좌 탭 — KIS 잔고 + 예수금 + 매수/매도 (원화/달러 토글 추가)
+ * 계좌 탭 — KIS 잔고 + 예수금 + 매수/매도 (원화/달러 토글 및 실시간 감지/레벨링 탑재)
  */
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
@@ -18,12 +18,12 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { tdsDark, tdsColors } from '../../constants/tdsColors';
-import { ListRow } from '../../components/tds/ListRow';
 import { Button } from '../../components/tds/Button';
 import { BottomSheet } from '../../components/tds/BottomSheet';
 import { SegmentControl } from '../../components/tds/SegmentControl';
-import { fetchKisFullBalance, submitKisOrder } from '../../lib/kisApi';
+import { fetchKisFullBalance, fetchKisDomesticBalance, submitKisOrder } from '../../lib/kisApi';
 import { fetchDetectionStatus, fetchRealtimeTrades } from '../../lib/realtimeApi';
+import { getStoredJwt } from '../../lib/authApi';
 import { sampleAccount } from '../../lib/sampleData';
 import useStore from '../../store/useStore';
 import { getPriceColor, formatRate, formatPrice } from '../../utils/price';
@@ -72,7 +72,7 @@ function formatCurrency(value, currency) {
   if (currency === 'USD') {
     return `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   }
-  return `₩${value.toLocaleString('ko-KR')}`;
+  return `₩${Math.round(value).toLocaleString('ko-KR')}`;
 }
 
 function formatSignedCurrency(value, currency) {
@@ -82,7 +82,6 @@ function formatSignedCurrency(value, currency) {
 }
 
 // ─── 포트폴리오 요약 ──────────────────────────────────────────────────────────
-
 function PortfolioSummary({ balance, summary, currency }) {
   if (!balance || balance.length === 0) return null;
 
@@ -148,12 +147,11 @@ function HoldingRow({ item, currency, flashTick, matchingTrade, liveBasePrice, o
     const safeLevel = Math.max(0, Math.min(23, level));
     levelImage = levelImages[safeLevel];
 
-    // 실시간으로 변동하는 슬라이딩 기준가 우선 적용, 없으면 DB 정적 기준가 폴백
     basePrice = Number(liveBasePrice) || Number(matchingTrade.base_price) || 0;
     currentPrice = Number(item.current_price_usd) || 0;
     if (basePrice > 0) {
       gapProfitRate = ((currentPrice - basePrice) / basePrice) * 100;
-      // 갭 1단위를 100%로 설정 (gap=4%이고 현재 -3.34%면 83.5% 채워짐)
+      // 갭 1단위 변화를 게이지 전체 너비에 대응시킴
       ratio = gap > 0 ? gapProfitRate / gap : 0;
       ratio = Math.max(-1, Math.min(1, ratio)); // -100% ~ 100% 범위 제한
     }
@@ -161,17 +159,10 @@ function HoldingRow({ item, currency, flashTick, matchingTrade, liveBasePrice, o
 
   const profitColor = getPriceColor(item.profit_rate);
 
-  // 게이지 퍼센트 텍스트 (바 외부 라벨로 항상 표시)
+  // 게이지 퍼센트 텍스트 (바 외부 라벨로 표시)
   const gaugeLabel = gapProfitRate > 0 
     ? `+${gapProfitRate.toFixed(2)}%` 
-    : gapProfitRate < 0 
-      ? `${gapProfitRate.toFixed(2)}%` 
-      : '0.00%';
-  const gaugeLabelColor = gapProfitRate > 0 
-    ? tdsColors.red500 
-    : gapProfitRate < 0 
-      ? tdsColors.blue500 
-      : tdsDark.textTertiary;
+    : `${gapProfitRate.toFixed(2)}%`;
 
   return (
     <Animated.View style={[styles.holdingCard, { backgroundColor: bg }]}>
@@ -179,9 +170,9 @@ function HoldingRow({ item, currency, flashTick, matchingTrade, liveBasePrice, o
         {/* 상단 정보 영역 */}
         <View style={styles.cardHeaderRow}>
           <View style={styles.headerLeft}>
-            <LogoBadge name={item.name} ticker={item.ticker} size={36} />
+            <LogoBadge name={item.name} ticker={item.ticker} size={44} />
             <View style={styles.nameTickerBlock}>
-              <Text style={styles.cardItemName} numberOfLines={1}>{item.name}</Text>
+              <Text style={styles.cardItemName}>{item.name}</Text>
               <Text style={styles.cardItemMeta}>{item.ticker} · {item.qty}주</Text>
             </View>
           </View>
@@ -197,50 +188,53 @@ function HoldingRow({ item, currency, flashTick, matchingTrade, liveBasePrice, o
         {/* 하단 실시간/레벨링 영역 */}
         {hasRealtime && (
           <View style={styles.cardBottomRow}>
-            {/* 게이지 영역 */}
             <View style={styles.gaugeContainer}>
-              {/* 기준가 + 퍼센트 라벨 */}
               <View style={styles.gaugeTextRowTop}>
-                {/* 기준가격을 정중앙(50%)에 절대배치하여 중앙선 역할 보장 */}
-                <View style={styles.gaugeBasePriceWrapper}>
-                  <Text style={styles.gaugeBasePriceText}>{basePrice.toFixed(2)}</Text>
-                </View>
-                <View style={{ flex: 1 }} />
-                <Text style={[styles.gaugeLabelText, { color: gaugeLabelColor }]}>{gaugeLabel}</Text>
+                {/* 갭 수치 표시용 라벨 (우측 상단 고정으로 가려짐 제거) */}
+                <Text style={styles.gaugeRateLabelText}>
+                  갭 {matchingTrade.gap}% ({gaugeLabel})
+                </Text>
               </View>
 
-              {/* 게이지 바 */}
               <View style={styles.gaugeBarBackground}>
-                {ratio > 0 ? (
-                  <View 
-                    style={[
-                      styles.gaugeBarFill, 
-                      styles.gaugeBarFillUp, 
-                      { left: '50%', width: `${Math.abs(ratio) * 50}%` }
-                    ]}
-                  />
-                ) : ratio < 0 ? (
-                  <View 
-                    style={[
-                      styles.gaugeBarFill, 
-                      styles.gaugeBarFillDown, 
-                      { right: '50%', width: `${Math.abs(ratio) * 50}%` }
-                    ]}
-                  />
-                ) : null}
+                {/* 50% 중앙 기준선 */}
+                <View style={styles.gaugeCenterLine} />
+                
+                {/* 게이지 바 */}
+                <View
+                  style={[
+                    styles.gaugeBarFill,
+                    ratio >= 0 ? styles.gaugeBarFillUp : styles.gaugeBarFillDown,
+                    ratio >= 0
+                      ? { left: '50%', width: `${ratio * 45}%` }
+                      : { right: '50%', width: `${Math.abs(ratio) * 45}%` }
+                  ]}
+                />
+
+                {/* 기준가 중앙 고정 텍스트 */}
+                <View style={styles.gaugeBasePriceWrapper}>
+                  <Text style={styles.gaugeBasePriceText}>
+                    ${basePrice.toFixed(2)}
+                  </Text>
+                </View>
               </View>
 
-              {/* 현재가 텍스트 — 게이지 바로 아래쪽의 현재 비중 위치에 동적으로 따라다님 */}
+              {/* 현재가 동적 위치 오버레이 */}
               <View style={styles.gaugeTextRowBottom}>
-                <View style={{ flex: 1, position: 'relative', height: 16 }}>
-                  <View style={{ position: 'absolute', left: `${50 + ratio * 45}%`, transform: [{ translateX: -18 }] }}>
-                    <Text style={styles.gaugeCurrentPriceText}>{currentPrice.toFixed(2)}</Text>
-                  </View>
+                <View
+                  style={[
+                    styles.gaugeCurrentPriceWrapper,
+                    { left: `${50 + ratio * 45}%` }
+                  ]}
+                >
+                  <Text style={styles.gaugeCurrentPriceText}>
+                    ${currentPrice.toFixed(2)}
+                  </Text>
                 </View>
               </View>
             </View>
 
-            {/* 레벨 표시 영역 */}
+            {/* 캐릭터 레벨 표시 */}
             <View style={styles.levelContainer}>
               {levelImage && (
                 <Image source={levelImage} style={styles.levelImage} resizeMode="contain" />
@@ -255,10 +249,12 @@ function HoldingRow({ item, currency, flashTick, matchingTrade, liveBasePrice, o
 }
 
 // ─── 메인 ────────────────────────────────────────────────────────────────────
-
 export default function AccountScreen() {
   const authMode = useStore((s) => s.authMode);
+  const marketType = useStore((s) => s.marketType); // 'overseas' | 'domestic' — 포트폴리오 탭과 공유
+  const setMarketType = useStore((s) => s.setMarketType);
   const [fullData, setFullData] = useState(null);
+  const [domesticData, setDomesticData] = useState(null);
   const [realtimeTrades, setRealtimeTrades] = useState([]); // 실시간 매매 설정 목록 추가
   const [currency, setCurrency] = useState('KRW'); // 'KRW' | 'USD'
   const [loading, setLoading] = useState(false);
@@ -279,7 +275,7 @@ export default function AccountScreen() {
     async (isRefresh = false) => {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
-      
+
       if (authMode === 'guest' || authMode === 'locked') {
         // 샘플 데이터 구성 (그림과 완벽히 일치하는 고화질 샘플 데이터)
         setFullData({
@@ -358,7 +354,13 @@ export default function AccountScreen() {
             }
           ]
         });
+        setDomesticData({
+          summary: { totalAsset: 85000000, evalAmount: 55000000, depositAmount: 30000000, profitRate: 8.5, profitAmount: 4200000 },
+          holdings: []
+        });
         setRealtimeTrades([
+          { ticker: 'AAPL', gap: 4, base_price: 176.50 },
+          { ticker: 'AMZN', gap: 5, base_price: 182.00 },
           { ticker: 'GOOG', gap: 2, base_price: 212.51, quantity: 5 },
           { ticker: 'BRK.B', gap: 1, base_price: 477.82, quantity: 1 }
         ]);
@@ -369,15 +371,19 @@ export default function AccountScreen() {
       }
 
       try {
-        const data = await fetchKisFullBalance();
-        setFullData(data);
-        
-        // 실시간 매매 정보 추가 로드
-        const { data: rtData } = await fetchRealtimeTrades();
+        const [overseasRes, domesticRes] = await Promise.all([
+          fetchKisFullBalance().catch(() => null),
+          fetchKisDomesticBalance().catch(() => null),
+        ]);
+        setFullData(overseasRes || { krw: {}, usd: {}, holdings: [] });
+        setDomesticData(domesticRes || { summary: {}, holdings: [] });
+
+        // 실시간 매매 설정 정보 추가 로드
+        const { data: rtData } = await fetchRealtimeTrades().catch(() => ({ data: null }));
         if (rtData) {
           setRealtimeTrades(rtData);
         }
-        
+
         setNotice(null);
       } catch (e) {
         setNotice('연결 전 화면을 미리 보고 있어요. 계좌 정보는 샘플 데이터로 보여주고 있어요.');
@@ -457,7 +463,13 @@ export default function AccountScreen() {
             }
           ]
         });
+        setDomesticData({
+          summary: { totalAsset: 85000000, evalAmount: 55000000, depositAmount: 30000000, profitRate: 8.5, profitAmount: 4200000 },
+          holdings: []
+        });
         setRealtimeTrades([
+          { ticker: 'AAPL', gap: 4, base_price: 176.50 },
+          { ticker: 'AMZN', gap: 5, base_price: 182.00 },
           { ticker: 'GOOG', gap: 2, base_price: 212.51, quantity: 5 },
           { ticker: 'BRK.B', gap: 1, base_price: 477.82, quantity: 1 }
         ]);
@@ -505,10 +517,9 @@ export default function AccountScreen() {
             setLivePricesUsd((prev) =>
               prev[normalized] === numPrice ? prev : { ...prev, [normalized]: numPrice }
             );
-            // 실시간 틱 수신 시 해당 종목 깜빡임 하이라이트 트리거
             setLiveTicks((prev) => ({ ...prev, [normalized]: Date.now() }));
           }
-          
+
           const numBase = Number(base_price);
           if (Number.isFinite(numBase) && numBase > 0) {
             setLiveBasesUsd((prev) =>
@@ -552,12 +563,15 @@ export default function AccountScreen() {
     return () => sub.remove();
   }, [connectWs]);
 
-  // ─── 실시간 가격 반영한 holdings/summary 계산 ────────────────────
-  const baseSummary = currency === 'KRW' ? fullData?.krw : fullData?.usd;
-  const baseBalance = fullData?.holdings || [];
+  // ─── 마켓별 데이터 선택 ────────────────────────────────────────────
+  const isOverseas = marketType === 'overseas';
+  const selectedData = isOverseas ? fullData : domesticData;
+  const baseSummary = isOverseas
+    ? (currency === 'KRW' ? fullData?.krw : fullData?.usd)
+    : domesticData?.summary;
+  const baseBalance = selectedData?.holdings || [];
 
   // 실시간 가격이 있는 종목은 평가금액/수익률을 재계산.
-  // KRW는 보유데이터의 (current_price_krw / current_price_usd) 비율을 환율로 사용.
   const balance = useMemo(() => {
     if (Object.keys(livePricesUsd).length === 0) return baseBalance;
     return baseBalance.map((item) => {
@@ -624,15 +638,28 @@ export default function AccountScreen() {
             <Text style={styles.headerEyebrow}>계좌 · 자산</Text>
             <Text style={styles.headerTitle}>내 자산</Text>
           </View>
-          <SegmentControl
-            tabs={[
-              { key: 'KRW', label: '원화' },
-              { key: 'USD', label: '달러' },
-            ]}
-            activeTab={currency}
-            onTabChange={setCurrency}
-            style={styles.headerToggle}
-          />
+          <View style={{ gap: 8 }}>
+            <SegmentControl
+              tabs={[
+                { key: 'domestic', label: '국내' },
+                { key: 'overseas', label: '미국' },
+              ]}
+              activeTab={marketType}
+              onTabChange={setMarketType}
+              style={styles.headerToggle}
+            />
+            {isOverseas && (
+              <SegmentControl
+                tabs={[
+                  { key: 'KRW', label: '원화' },
+                  { key: 'USD', label: '달러' },
+                ]}
+                activeTab={currency}
+                onTabChange={setCurrency}
+                style={styles.headerToggle}
+              />
+            )}
+          </View>
         </View>
 
         {notice && (
@@ -646,24 +673,24 @@ export default function AccountScreen() {
         ) : (
           <>
             <View style={styles.depositSection}>
-              <Text style={styles.depositSubLabel}>실 자산 ({currency})</Text>
-              <Text style={styles.depositAmount}>{formatCurrency(currentSummary?.totalAsset, currency)}</Text>
+              <Text style={styles.depositSubLabel}>실 자산 ({isOverseas ? currency : 'KRW'})</Text>
+              <Text style={styles.depositAmount}>{formatCurrency(currentSummary?.totalAsset, isOverseas ? currency : 'KRW')}</Text>
               <View style={styles.depositSubRow}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.depositItemLabel}>예수금</Text>
-                  <Text style={styles.depositItemValue}>{formatCurrency(currentSummary?.depositAmount, currency)}</Text>
+                  <Text style={styles.depositItemValue}>{formatCurrency(currentSummary?.depositAmount, isOverseas ? currency : 'KRW')}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.depositItemLabel}>평가금액</Text>
-                  <Text style={styles.depositItemValue}>{formatCurrency(currentSummary?.evalAmount, currency)}</Text>
+                  <Text style={styles.depositItemValue}>{formatCurrency(currentSummary?.evalAmount, isOverseas ? currency : 'KRW')}</Text>
                 </View>
               </View>
             </View>
 
-            <PortfolioSummary 
-              balance={balance} 
-              summary={currentSummary} 
-              currency={currency} 
+            <PortfolioSummary
+              balance={balance}
+              summary={currentSummary}
+              currency={isOverseas ? currency : 'KRW'}
             />
 
             <View style={styles.holdingsHeader}>
@@ -675,7 +702,7 @@ export default function AccountScreen() {
                 <HoldingRow
                   key={item.ticker}
                   item={item}
-                  currency={currency}
+                  currency={isOverseas ? currency : 'KRW'}
                   flashTick={liveTicks[normalizeTicker(item.ticker)]}
                   matchingTrade={realtimeTrades.find(
                     (t) => normalizeTicker(t.ticker) === normalizeTicker(item.ticker)
@@ -704,30 +731,31 @@ export default function AccountScreen() {
         }
       >
         {selected && (() => {
-          const evalAmt = currency === 'USD' ? selected.eval_amount_usd : selected.eval_amount_krw;
-          const buyAmt = currency === 'USD' ? selected.buy_amount_usd : selected.buy_amount_krw;
-          const curPrice = currency === 'USD' ? selected.current_price_usd : selected.current_price_krw;
-          const profitAmt = currency === 'USD' ? selected.profit_amount_usd : selected.profit_amount_krw;
+          const cur = isOverseas ? currency : 'KRW';
+          const evalAmt = cur === 'USD' ? selected.eval_amount_usd : (selected.eval_amount_krw || selected.eval_amount);
+          const buyAmt = cur === 'USD' ? selected.buy_amount_usd : (selected.buy_amount_krw || selected.buy_amount);
+          const curPrice = cur === 'USD' ? selected.current_price_usd : (selected.current_price_krw || selected.current_price);
+          const profitAmt = cur === 'USD' ? selected.profit_amount_usd : (selected.profit_amount_krw || selected.profit_amount);
           return (
             <View style={{ paddingBottom: 20 }}>
               <Text style={styles.sheetCode}>{selected.ticker}</Text>
-              <Text style={styles.sheetPriceMain}>{formatCurrency(curPrice, currency)}</Text>
+              <Text style={styles.sheetPriceMain}>{formatCurrency(curPrice, cur)}</Text>
               <View style={styles.orderRow}>
                 <Text style={styles.sheetLabel}>보유 수량</Text>
                 <Text style={styles.sheetValue}>{selected.qty}주</Text>
               </View>
               <View style={styles.orderRow}>
                 <Text style={styles.sheetLabel}>매입금액</Text>
-                <Text style={styles.sheetValue}>{formatCurrency(buyAmt, currency)}</Text>
+                <Text style={styles.sheetValue}>{formatCurrency(buyAmt, cur)}</Text>
               </View>
               <View style={styles.orderRow}>
                 <Text style={styles.sheetLabel}>평가금액</Text>
-                <Text style={styles.sheetValue}>{formatCurrency(evalAmt, currency)}</Text>
+                <Text style={styles.sheetValue}>{formatCurrency(evalAmt, cur)}</Text>
               </View>
               <View style={styles.orderRow}>
                 <Text style={styles.sheetLabel}>평가손익</Text>
                 <Text style={[styles.sheetValue, { color: getPriceColor(profitAmt) }]}>
-                  {formatSignedCurrency(profitAmt, currency)}
+                  {formatSignedCurrency(profitAmt, cur)}
                 </Text>
               </View>
             </View>
@@ -801,16 +829,22 @@ const styles = StyleSheet.create({
   portfolioProfit: { fontSize: 13, fontWeight: '600' },
   holdingsHeader: { marginTop: 24, marginBottom: 8 },
   sectionTitle: { fontSize: 13, color: tdsDark.textSecondary, marginHorizontal: 20, fontWeight: '600' },
-  listCard: { backgroundColor: tdsDark.bgCard, borderTopWidth: 1, borderTopColor: tdsDark.border },
+  listCard: { backgroundColor: 'transparent', borderTopWidth: 0, paddingHorizontal: 16, gap: 12 },
   
-  // 개별 홀딩 행 스타일 — 원래 플랫 리스트 복원 (카드 간 간격 없이 꽉 채움)
+  // 개별 홀딩 카드 스타일
   holdingCard: {
-    borderBottomWidth: 1,
-    borderBottomColor: tdsDark.border,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: tdsDark.border,
+    shadowColor: '#000',
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
+    elevation: 2,
+    overflow: 'hidden',
+    marginBottom: 12,
   },
   cardTouchArea: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    padding: 16,
   },
   cardHeaderRow: {
     flexDirection: 'row',
@@ -820,124 +854,146 @@ const styles = StyleSheet.create({
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
     flex: 1,
-    marginRight: 8,
   },
   nameTickerBlock: {
     flex: 1,
   },
   cardItemName: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
     color: tdsDark.textPrimary,
     letterSpacing: -0.3,
   },
   cardItemMeta: {
-    fontSize: 11,
+    fontSize: 12,
     color: tdsDark.textTertiary,
-    marginTop: 1,
+    marginTop: 2,
   },
   headerRight: {
     alignItems: 'flex-end',
+    minWidth: 100,
   },
   cardItemRate: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '800',
   },
   cardItemEval: {
-    fontSize: 11,
+    fontSize: 12,
     color: tdsDark.textSecondary,
     marginTop: 2,
   },
   cardItemBuy: {
-    fontSize: 10,
+    fontSize: 11,
     color: tdsDark.textTertiary,
     marginTop: 1,
   },
   
-  // 하단 실시간/레벨 영역 스타일 (구분선 제거 및 간격 극적 압축)
+  // 하단 실시간/레벨 영역 스타일
   cardBottomRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 6,
-    paddingTop: 0,
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 0, // 상하 구분선 완전 제거
   },
   gaugeContainer: {
     flex: 1,
-    paddingRight: 12,
+    paddingRight: 16,
   },
   gaugeTextRowTop: {
     flexDirection: 'row',
+    justifyContent: 'flex-end',
     alignItems: 'center',
-    position: 'relative',
-    height: 18,
-    marginBottom: 2,
+    marginBottom: 4,
   },
-  gaugeBasePriceWrapper: {
-    position: 'absolute',
-    left: '50%',
-    transform: [{ translateX: -18 }],
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  gaugeBasePriceText: {
+  gaugeRateLabelText: {
     fontSize: 11,
-    color: tdsDark.textTertiary,
-    fontWeight: '500',
-  },
-  gaugeLabelText: {
-    fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '700',
+    color: tdsDark.textSecondary,
   },
   gaugeBarBackground: {
-    height: 14,
+    height: 16,
     backgroundColor: tdsDark.border,
-    borderRadius: 7,
+    borderRadius: 8,
     position: 'relative',
-    overflow: 'hidden',
+    overflow: 'visible', // 게이지가 넘치지 않도록 조절
+  },
+  gaugeCenterLine: {
+    position: 'absolute',
+    left: '50%',
+    width: 2,
+    height: '100%',
+    backgroundColor: tdsDark.textTertiary,
+    zIndex: 1,
   },
   gaugeBarFill: {
     position: 'absolute',
     top: 0,
     bottom: 0,
     height: '100%',
+    zIndex: 2,
   },
   gaugeBarFillUp: {
     backgroundColor: tdsColors.red500,
-    borderTopRightRadius: 7,
-    borderBottomRightRadius: 7,
+    borderTopRightRadius: 4,
+    borderBottomRightRadius: 4,
   },
   gaugeBarFillDown: {
     backgroundColor: tdsColors.blue500,
-    borderTopLeftRadius: 7,
-    borderBottomLeftRadius: 7,
+    borderTopLeftRadius: 4,
+    borderBottomLeftRadius: 4,
+  },
+  gaugeBasePriceWrapper: {
+    position: 'absolute',
+    left: '50%',
+    transform: [{ translateX: -35 }],
+    width: 70,
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: '100%',
+    zIndex: 3,
+  },
+  gaugeBasePriceText: {
+    fontSize: 11,
+    color: '#fff',
+    fontWeight: '800',
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   gaugeTextRowBottom: {
-    marginTop: 3,
-    alignItems: 'flex-start',
+    marginTop: 4,
+    height: 16,
+    position: 'relative',
+  },
+  gaugeCurrentPriceWrapper: {
+    position: 'absolute',
+    transform: [{ translateX: -35 }],
+    width: 70,
+    alignItems: 'center',
   },
   gaugeCurrentPriceText: {
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '800',
     color: tdsDark.textSecondary,
   },
   levelContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    width: 56,
-    gap: 2,
+    width: 60,
+    gap: 4,
   },
   levelImage: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
   },
   levelText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '800',
     color: tdsDark.textPrimary,
   },
-  
   sheetCtaRow: { flexDirection: 'row', gap: 12, marginTop: 10 },
   sheetCode: { fontSize: 13, color: tdsDark.textTertiary, marginBottom: 4 },
   sheetPriceMain: { fontSize: 32, fontWeight: '700', color: tdsDark.textPrimary, marginBottom: 16 },
