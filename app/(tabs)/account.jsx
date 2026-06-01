@@ -144,8 +144,8 @@ function HoldingRow({ item, currency, flashTick, matchingTrade, liveBasePrice, o
     const gap = Number(matchingTrade.gap) || 1;
     const qty = Number(item.qty) || 0;
     
-    // ✅ 사용자의 수정 요건: 수량을 갭 수량(quantity)으로 나누어 정확히 계산
-    const gapQty = Number(matchingTrade.quantity) || gap || 1;
+    // ✅ 사용자의 수정 요건: 수량을 갭 수량(gap_qty)으로 나누어 정확히 계산
+    const gapQty = Number(matchingTrade.gap_qty) || Number(matchingTrade.quantity) || gap || 1;
     level = Math.ceil(qty / gapQty);
     
     const safeLevel = Math.max(0, Math.min(23, level));
@@ -352,10 +352,10 @@ export default function AccountScreen() {
           holdings: []
         });
         setRealtimeTrades([
-          { ticker: 'AAPL', gap: 4, base_price: 176.50 },
-          { ticker: 'AMZN', gap: 5, base_price: 182.00 },
-          { ticker: 'GOOG', gap: 2, base_price: 212.51, quantity: 5 },
-          { ticker: 'BRK.B', gap: 1, base_price: 477.82, quantity: 1 }
+          { ticker: 'AAPL', gap: 4, base_price: 176.50, gap_qty: 1 },
+          { ticker: 'AMZN', gap: 5, base_price: 182.00, gap_qty: 2 },
+          { ticker: 'GOOG', gap: 2, base_price: 212.51, gap_qty: 5, quantity: 5 },
+          { ticker: 'BRK.B', gap: 1, base_price: 477.82, gap_qty: 1, quantity: 1 }
         ]);
         setNotice('비로그인 모드라서 샘플 계좌 데이터를 보여주고 있어요.');
         setLoading(false);
