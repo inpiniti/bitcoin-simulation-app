@@ -152,13 +152,25 @@ function HoldingRow({ item, currency, flashTick, matchingTrade, onPress }) {
     currentPrice = Number(item.current_price_usd) || 0;
     if (basePrice > 0) {
       gapProfitRate = ((currentPrice - basePrice) / basePrice) * 100;
-      const maxRange = gap * 2; // 갭의 2배를 최대 범위로 설정
-      ratio = maxRange > 0 ? gapProfitRate / maxRange : 0;
+      // 갭 1단위를 100%로 설정 (gap=4%이고 현재 -3.34%면 83.5% 채워짐)
+      ratio = gap > 0 ? gapProfitRate / gap : 0;
       ratio = Math.max(-1, Math.min(1, ratio)); // -100% ~ 100% 범위 제한
     }
   }
 
   const profitColor = getPriceColor(item.profit_rate);
+
+  // 게이지 퍼센트 텍스트 (바 외부 라벨로 항상 표시)
+  const gaugeLabel = gapProfitRate > 0 
+    ? `+${gapProfitRate.toFixed(2)}%` 
+    : gapProfitRate < 0 
+      ? `${gapProfitRate.toFixed(2)}%` 
+      : '0.00%';
+  const gaugeLabelColor = gapProfitRate > 0 
+    ? tdsColors.red500 
+    : gapProfitRate < 0 
+      ? tdsColors.blue500 
+      : tdsDark.textTertiary;
 
   return (
     <Animated.View style={[styles.holdingCard, { backgroundColor: bg }]}>
@@ -166,9 +178,9 @@ function HoldingRow({ item, currency, flashTick, matchingTrade, onPress }) {
         {/* 상단 정보 영역 */}
         <View style={styles.cardHeaderRow}>
           <View style={styles.headerLeft}>
-            <LogoBadge name={item.name} ticker={item.ticker} size={44} />
+            <LogoBadge name={item.name} ticker={item.ticker} size={36} />
             <View style={styles.nameTickerBlock}>
-              <Text style={styles.cardItemName}>{item.name}</Text>
+              <Text style={styles.cardItemName} numberOfLines={1}>{item.name}</Text>
               <Text style={styles.cardItemMeta}>{item.ticker} · {item.qty}주</Text>
             </View>
           </View>
@@ -186,9 +198,10 @@ function HoldingRow({ item, currency, flashTick, matchingTrade, onPress }) {
           <View style={styles.cardBottomRow}>
             {/* 게이지 영역 */}
             <View style={styles.gaugeContainer}>
-              {/* 기준가 텍스트 */}
+              {/* 기준가 + 퍼센트 라벨 */}
               <View style={styles.gaugeTextRowTop}>
                 <Text style={styles.gaugeBasePriceText}>{basePrice.toFixed(2)}</Text>
+                <Text style={[styles.gaugeLabelText, { color: gaugeLabelColor }]}>{gaugeLabel}</Text>
               </View>
 
               {/* 게이지 바 */}
@@ -198,39 +211,23 @@ function HoldingRow({ item, currency, flashTick, matchingTrade, onPress }) {
                     style={[
                       styles.gaugeBarFill, 
                       styles.gaugeBarFillUp, 
-                      { left: '50%', width: `${ratio * 50}%` }
+                      { left: '50%', width: `${Math.abs(ratio) * 50}%` }
                     ]}
-                  >
-                    <Text style={styles.gaugeRateText} numberOfLines={1}>
-                      +{gapProfitRate.toFixed(2)}%
-                    </Text>
-                  </View>
+                  />
                 ) : ratio < 0 ? (
                   <View 
                     style={[
                       styles.gaugeBarFill, 
                       styles.gaugeBarFillDown, 
-                      { right: '50%', width: `${Math.abs(ratio) * 50}%`, alignItems: 'flex-end' }
+                      { right: '50%', width: `${Math.abs(ratio) * 50}%` }
                     ]}
-                  >
-                    <Text style={styles.gaugeRateText} numberOfLines={1}>
-                      {gapProfitRate.toFixed(2)}%
-                    </Text>
-                  </View>
-                ) : (
-                  <View style={[styles.gaugeBarFillCenter]}>
-                    <Text style={styles.gaugeRateTextZero}>0.00%</Text>
-                  </View>
-                )}
+                  />
+                ) : null}
               </View>
 
               {/* 현재가 텍스트 */}
               <View style={styles.gaugeTextRowBottom}>
-                <View style={{ flex: 1 }}>
-                  <View style={{ left: `${50 + ratio * 45}%`, transform: [{ translateX: -20 }] }}>
-                    <Text style={styles.gaugeCurrentPriceText}>{currentPrice.toFixed(2)}</Text>
-                  </View>
-                </View>
+                <Text style={styles.gaugeCurrentPriceText}>{currentPrice.toFixed(2)}</Text>
               </View>
             </View>
 
@@ -765,22 +762,16 @@ const styles = StyleSheet.create({
   portfolioProfit: { fontSize: 13, fontWeight: '600' },
   holdingsHeader: { marginTop: 24, marginBottom: 8 },
   sectionTitle: { fontSize: 13, color: tdsDark.textSecondary, marginHorizontal: 20, fontWeight: '600' },
-  listCard: { backgroundColor: 'transparent', borderTopWidth: 0, paddingHorizontal: 16, gap: 12 },
+  listCard: { backgroundColor: tdsDark.bgCard, borderTopWidth: 1, borderTopColor: tdsDark.border },
   
-  // 개별 홀딩 카드 스타일
+  // 개별 홀딩 행 스타일 — 원래 플랫 리스트 복원 (카드 간 간격 없이 꽉 채움)
   holdingCard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: tdsDark.border,
-    shadowColor: '#000',
-    shadowOpacity: 0.03,
-    shadowRadius: 8,
-    elevation: 2,
-    overflow: 'hidden',
-    marginBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: tdsDark.border,
   },
   cardTouchArea: {
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
   },
   cardHeaderRow: {
     flexDirection: 'row',
@@ -790,38 +781,38 @@ const styles = StyleSheet.create({
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
     flex: 1,
+    marginRight: 8,
   },
   nameTickerBlock: {
     flex: 1,
   },
   cardItemName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
     color: tdsDark.textPrimary,
     letterSpacing: -0.3,
   },
   cardItemMeta: {
-    fontSize: 12,
+    fontSize: 11,
     color: tdsDark.textTertiary,
-    marginTop: 2,
+    marginTop: 1,
   },
   headerRight: {
     alignItems: 'flex-end',
-    minWidth: 100,
   },
   cardItemRate: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
   },
   cardItemEval: {
-    fontSize: 12,
+    fontSize: 11,
     color: tdsDark.textSecondary,
     marginTop: 2,
   },
   cardItemBuy: {
-    fontSize: 11,
+    fontSize: 10,
     color: tdsDark.textTertiary,
     marginTop: 1,
   },
@@ -830,28 +821,34 @@ const styles = StyleSheet.create({
   cardBottomRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: tdsDark.border,
   },
   gaugeContainer: {
     flex: 1,
-    paddingRight: 16,
+    paddingRight: 12,
   },
   gaugeTextRowTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: 3,
   },
   gaugeBasePriceText: {
     fontSize: 11,
     color: tdsDark.textTertiary,
     fontWeight: '500',
   },
+  gaugeLabelText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
   gaugeBarBackground: {
-    height: 16,
+    height: 14,
     backgroundColor: tdsDark.border,
-    borderRadius: 8,
+    borderRadius: 7,
     position: 'relative',
     overflow: 'hidden',
   },
@@ -860,41 +857,20 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     height: '100%',
-    justifyContent: 'center',
-    paddingHorizontal: 8,
   },
   gaugeBarFillUp: {
     backgroundColor: tdsColors.red500,
-    borderTopRightRadius: 4,
-    borderBottomRightRadius: 4,
+    borderTopRightRadius: 7,
+    borderBottomRightRadius: 7,
   },
   gaugeBarFillDown: {
     backgroundColor: tdsColors.blue500,
-    borderTopLeftRadius: 4,
-    borderBottomLeftRadius: 4,
-  },
-  gaugeRateText: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: '#fff',
-  },
-  gaugeBarFillCenter: {
-    position: 'absolute',
-    left: '45%',
-    width: '10%',
-    height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  gaugeRateTextZero: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: tdsDark.textTertiary,
+    borderTopLeftRadius: 7,
+    borderBottomLeftRadius: 7,
   },
   gaugeTextRowBottom: {
-    marginTop: 4,
-    height: 16,
-    flexDirection: 'row',
+    marginTop: 3,
+    alignItems: 'flex-start',
   },
   gaugeCurrentPriceText: {
     fontSize: 11,
@@ -904,15 +880,15 @@ const styles = StyleSheet.create({
   levelContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    width: 60,
-    gap: 4,
+    width: 56,
+    gap: 2,
   },
   levelImage: {
-    width: 44,
-    height: 44,
+    width: 40,
+    height: 40,
   },
   levelText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '800',
     color: tdsDark.textPrimary,
   },
