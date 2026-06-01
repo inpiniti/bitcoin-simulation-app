@@ -143,7 +143,11 @@ function HoldingRow({ item, currency, flashTick, matchingTrade, liveBasePrice, o
     hasRealtime = true;
     const gap = Number(matchingTrade.gap) || 1;
     const qty = Number(item.qty) || 0;
-    level = Math.ceil(qty / gap);
+    
+    // ✅ 사용자의 수정 요건: 수량을 갭 수량(quantity)으로 나누어 정확히 계산
+    const gapQty = Number(matchingTrade.quantity) || gap || 1;
+    level = Math.ceil(qty / gapQty);
+    
     const safeLevel = Math.max(0, Math.min(23, level));
     levelImage = levelImages[safeLevel];
 
@@ -162,56 +166,66 @@ function HoldingRow({ item, currency, flashTick, matchingTrade, liveBasePrice, o
   return (
     <Animated.View style={[styles.holdingCard, { backgroundColor: bg }]}>
       <TouchableOpacity onPress={() => onPress(item)} activeOpacity={0.8} style={styles.cardTouchArea}>
-        {/* 상단 정보 영역 */}
-        <View style={styles.cardHeaderRow}>
-          <View style={styles.headerLeft}>
-            <LogoBadge name={item.name} ticker={item.ticker} size={44} />
-            <View style={styles.nameTickerBlock}>
-              <Text style={styles.cardItemName}>{item.name}</Text>
-              <Text style={styles.cardItemMeta}>{item.ticker} · {item.qty}주</Text>
-            </View>
-          </View>
-          <View style={styles.headerRight}>
-            <Text style={[styles.cardItemRate, { color: profitColor }]}>
-              {formatRate(item.profit_rate)}
-            </Text>
-            <Text style={styles.cardItemEval}>평가 {formatCurrency(evalAmt, currency)}</Text>
-            <Text style={styles.cardItemBuy}>매입 {formatCurrency(buyAmt, currency)}</Text>
-          </View>
-        </View>
+        {/* 가로 2분할 레이아웃: 왼쪽(수치 및 게이지바 융합) + 오른쪽(레벨 캐릭터 단독 광활 스페이스) */}
+        <View style={styles.cardMainRow}>
+          
+          {/* [좌측 블록]: 텍스트 수치들 및 실시간 슬라이딩 게이지바를 수직 통합 */}
+          <View style={styles.leftContentBlock}>
+            {/* 상단 텍스트 정보 영역 (종목명, 평가매입액, 수익률) */}
+            <View style={styles.leftTopTextRow}>
+              {/* 종목명 및 수량 */}
+              <View style={styles.headerLeft}>
+                <LogoBadge name={item.name} ticker={item.ticker} size={40} />
+                <View style={styles.nameTickerBlock}>
+                  <Text style={styles.cardItemName} numberOfLines={1}>{item.name}</Text>
+                  <Text style={styles.cardItemMeta}>{item.ticker} · {item.qty}주</Text>
+                </View>
+              </View>
 
-        {/* 하단 실시간/레벨링 영역 (높이 극초소형 다이어트 버전) */}
-        {hasRealtime && (
-          <View style={styles.cardBottomRow}>
-            <View style={styles.gaugeContainer}>
-              {/* 1줄 통합 가격 텍스트 요약 */}
-              <View style={styles.gaugeSummaryRow}>
-                <Text style={styles.gaugeSummaryText}>
-                  기준 ${basePrice.toFixed(2)} · 현재 ${currentPrice.toFixed(2)} ({gapSign}{gapProfitRate.toFixed(2)}%)
+              {/* 평가/매입/수익률을 왼쪽 밀착해서 배치 */}
+              <View style={styles.priceDataBlock}>
+                <Text style={[styles.cardItemRate, { color: profitColor }]}>
+                  {formatRate(item.profit_rate)}
                 </Text>
-                <Text style={styles.gaugeSummaryGapText}>갭 {matchingTrade.gap}%</Text>
-              </View>
-
-              {/* 극단적으로 얇아진 게이지바 (6px) */}
-              <View style={styles.gaugeBarBackground}>
-                {/* 50% 중앙 기준선 */}
-                <View style={styles.gaugeCenterLine} />
-                
-                {/* 게이지 바 채우기 */}
-                <View
-                  style={[
-                    styles.gaugeBarFill,
-                    ratio >= 0 ? styles.gaugeBarFillUp : styles.gaugeBarFillDown,
-                    ratio >= 0
-                      ? { left: '50%', width: `${ratio * 50}%` }
-                      : { right: '50%', width: `${Math.abs(ratio) * 50}%` }
-                  ]}
-                />
+                <Text style={styles.cardItemEval} numberOfLines={1}>평가 {formatCurrency(evalAmt, currency)}</Text>
+                <Text style={styles.cardItemBuy} numberOfLines={1}>매입 {formatCurrency(buyAmt, currency)}</Text>
               </View>
             </View>
 
-            {/* 캐릭터 레벨 표시 - 흰색 둥근 배지로 감싸 배경 투명화 완벽 해결 */}
-            <View style={styles.levelContainer}>
+            {/* 게이지바 영역 (좌측 블록 내부의 하단에 컴팩트하게 합체!) */}
+            {hasRealtime && (
+              <View style={styles.gaugeInlineContainer}>
+                {/* 1줄 통합 가격 텍스트 요약 */}
+                <View style={styles.gaugeSummaryRow}>
+                  <Text style={styles.gaugeSummaryText} numberOfLines={1}>
+                    기준 ${basePrice.toFixed(2)} · 현재 ${currentPrice.toFixed(2)} ({gapSign}{gapProfitRate.toFixed(2)}%)
+                  </Text>
+                  <Text style={styles.gaugeSummaryGapText}>갭 {matchingTrade.gap}%</Text>
+                </View>
+
+                {/* 극단적으로 얇아진 게이지바 (6px) */}
+                <View style={styles.gaugeBarBackground}>
+                  {/* 50% 중앙 기준선 */}
+                  <View style={styles.gaugeCenterLine} />
+                  
+                  {/* 게이지 바 채우기 */}
+                  <View
+                    style={[
+                      styles.gaugeBarFill,
+                      ratio >= 0 ? styles.gaugeBarFillUp : styles.gaugeBarFillDown,
+                      ratio >= 0
+                        ? { left: '50%', width: `${ratio * 50}%` }
+                        : { right: '50%', width: `${Math.abs(ratio) * 50}%` }
+                    ]}
+                  />
+                </View>
+              </View>
+            )}
+          </View>
+
+          {/* [우측 블록]: 오직 큼직하고 시원한 레벨 캐릭터와 레벨만을 위한 단독 럭셔리 스페이스! */}
+          {hasRealtime && (
+            <View style={styles.rightLevelBlock}>
               <View style={styles.levelImageWrapper}>
                 {levelImage && (
                   <Image source={levelImage} style={styles.levelImage} resizeMode="contain" />
@@ -219,8 +233,9 @@ function HoldingRow({ item, currency, flashTick, matchingTrade, liveBasePrice, o
               </View>
               <Text style={styles.levelText}>LV{level}</Text>
             </View>
-          </View>
-        )}
+          )}
+          
+        </View>
       </TouchableOpacity>
     </Animated.View>
   );
@@ -821,7 +836,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12, // 극도로 좁게 압축
   },
-  cardHeaderRow: {
+  cardMainRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  leftContentBlock: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  leftTopTextRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -829,70 +853,64 @@ const styles = StyleSheet.create({
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    flex: 1,
+    gap: 10,
+    flex: 1.1,
   },
   nameTickerBlock: {
     flex: 1,
   },
   cardItemName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
     color: tdsDark.textPrimary,
     letterSpacing: -0.3,
   },
   cardItemMeta: {
-    fontSize: 12,
+    fontSize: 11,
     color: tdsDark.textTertiary,
     marginTop: 2,
   },
-  headerRight: {
+  priceDataBlock: {
     alignItems: 'flex-end',
-    minWidth: 100,
+    flex: 0.9,
   },
   cardItemRate: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
   },
   cardItemEval: {
-    fontSize: 12,
+    fontSize: 11,
     color: tdsDark.textSecondary,
-    marginTop: 2,
+    marginTop: 1,
   },
   cardItemBuy: {
-    fontSize: 11,
+    fontSize: 10,
     color: tdsDark.textTertiary,
     marginTop: 1,
   },
   
-  // 하단 실시간/레벨 영역 스타일 (극초소형 압축)
-  cardBottomRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 8,
-    gap: 8,
-  },
-  gaugeContainer: {
-    flex: 1,
+  // 인라인 실시간 게이지 영역 스타일 (좌측 하단 융합)
+  gaugeInlineContainer: {
+    marginTop: 6,
   },
   gaugeSummaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: 3,
   },
   gaugeSummaryText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
     color: tdsDark.textSecondary,
   },
   gaugeSummaryGapText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
     color: tdsDark.textSecondary,
   },
   gaugeBarBackground: {
-    height: 6, // 16px -> 6px 극도로 슬림화
+    height: 6, // 얇고 세련된 6px 라인
     backgroundColor: tdsDark.border,
     borderRadius: 3,
     position: 'relative',
@@ -919,32 +937,34 @@ const styles = StyleSheet.create({
   gaugeBarFillDown: {
     backgroundColor: tdsColors.blue500,
   },
-  levelContainer: {
-    flexDirection: 'row',
+  
+  // [우측 블록] 캐릭터 레벨 전용 단독 광활 공간 스타일!
+  rightLevelBlock: {
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingLeft: 8,
+    width: 58,
     borderLeftWidth: 1,
     borderLeftColor: tdsDark.border,
-    height: 32,
+    paddingLeft: 8,
+    height: 52, // 좌측 수직 높이에 딱 맞게 조율
+    gap: 2,
   },
   levelImageWrapper: {
-    width: 32, // 32x32 사이즈로 컴팩트하게
-    height: 32,
+    width: 38, // 큼직하고 시원한 38px
+    height: 38,
     overflow: 'hidden',
     justifyContent: 'center',
     alignItems: 'center',
   },
   levelImage: {
-    width: 28,
-    height: 28,
+    width: 36, // 캐릭터 본체 36px 대형화!
+    height: 36,
   },
   levelText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '800',
     color: tdsDark.textPrimary,
-    minWidth: 26,
+    textAlign: 'center',
   },
   sheetCtaRow: { flexDirection: 'row', gap: 12, marginTop: 10 },
   sheetCode: { fontSize: 13, color: tdsDark.textTertiary, marginBottom: 4 },
