@@ -109,7 +109,7 @@ function PortfolioSummary({ balance, summary, currency }) {
 }
 
 // 보유종목 행 — flashTick(timestamp)가 바뀌면 옅은 파란색에서 페이드 아웃
-function HoldingRow({ item, currency, flashTick, matchingTrade, onPress }) {
+function HoldingRow({ item, currency, flashTick, matchingTrade, liveBasePrice, onPress }) {
   const flashAnim = useRef(new Animated.Value(0)).current;
   const prevTickRef = useRef(flashTick);
   useEffect(() => {
@@ -148,7 +148,8 @@ function HoldingRow({ item, currency, flashTick, matchingTrade, onPress }) {
     const safeLevel = Math.max(0, Math.min(23, level));
     levelImage = levelImages[safeLevel];
 
-    basePrice = Number(matchingTrade.base_price) || 0;
+    // 실시간으로 변동하는 슬라이딩 기준가 우선 적용, 없으면 DB 정적 기준가 폴백
+    basePrice = Number(liveBasePrice) || Number(matchingTrade.base_price) || 0;
     currentPrice = Number(item.current_price_usd) || 0;
     if (basePrice > 0) {
       gapProfitRate = ((currentPrice - basePrice) / basePrice) * 100;
@@ -200,7 +201,11 @@ function HoldingRow({ item, currency, flashTick, matchingTrade, onPress }) {
             <View style={styles.gaugeContainer}>
               {/* 기준가 + 퍼센트 라벨 */}
               <View style={styles.gaugeTextRowTop}>
-                <Text style={styles.gaugeBasePriceText}>{basePrice.toFixed(2)}</Text>
+                {/* 기준가격을 정중앙(50%)에 절대배치하여 중앙선 역할 보장 */}
+                <View style={styles.gaugeBasePriceWrapper}>
+                  <Text style={styles.gaugeBasePriceText}>{basePrice.toFixed(2)}</Text>
+                </View>
+                <View style={{ flex: 1 }} />
                 <Text style={[styles.gaugeLabelText, { color: gaugeLabelColor }]}>{gaugeLabel}</Text>
               </View>
 
@@ -225,9 +230,13 @@ function HoldingRow({ item, currency, flashTick, matchingTrade, onPress }) {
                 ) : null}
               </View>
 
-              {/* 현재가 텍스트 */}
+              {/* 현재가 텍스트 — 게이지 바로 아래쪽의 현재 비중 위치에 동적으로 따라다님 */}
               <View style={styles.gaugeTextRowBottom}>
-                <Text style={styles.gaugeCurrentPriceText}>{currentPrice.toFixed(2)}</Text>
+                <View style={{ flex: 1, position: 'relative', height: 16 }}>
+                  <View style={{ position: 'absolute', left: `${50 + ratio * 45}%`, transform: [{ translateX: -18 }] }}>
+                    <Text style={styles.gaugeCurrentPriceText}>{currentPrice.toFixed(2)}</Text>
+                  </View>
+                </View>
               </View>
             </View>
 
@@ -260,6 +269,8 @@ export default function AccountScreen() {
 
   // 실시간 가격 (USD) — 백엔드 WebSocket으로 수신. 키: 정규화 ticker
   const [livePricesUsd, setLivePricesUsd] = useState({});
+  // 실시간 백엔드 슬라이딩 기준가
+  const [liveBasesUsd, setLiveBasesUsd] = useState({});
   // 마지막 갱신 시각 (페이드 트리거용)
   const [liveTicks, setLiveTicks] = useState({});
   const wsRef = useRef(null);
@@ -471,23 +482,50 @@ export default function AccountScreen() {
     try {
       const { data: statusData } = await fetchDetectionStatus();
       if (!statusData?.running) return; // 서버 감지 안 돌면 연결 안 함
-      const ws = new WebSocket(BACKEND_WS_URL);
+      
+      const jwt = await getStoredJwt();
+      if (!jwt) {
+        console.log('[Account WS] JWT 없음 - 연결 생략 (비로그인)');
+        return;
+      }
+      
+      const wsUrl = `${BACKEND_WS_URL}?token=${encodeURIComponent(jwt)}`;
+      console.log('[Account WS] 연결 시도');
+      const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
+      
+      ws.onopen = () => console.log('[Account WS] 연결 성공 ✓');
       ws.onmessage = (event) => {
         try {
-          const { ticker, price } = JSON.parse(event.data);
+          const { ticker, price, base_price } = JSON.parse(event.data);
           const normalized = normalizeTicker(ticker);
+          
           const numPrice = Number(price);
           if (Number.isFinite(numPrice) && numPrice > 0) {
             setLivePricesUsd((prev) =>
               prev[normalized] === numPrice ? prev : { ...prev, [normalized]: numPrice }
             );
+            // 실시간 틱 수신 시 해당 종목 깜빡임 하이라이트 트리거
             setLiveTicks((prev) => ({ ...prev, [normalized]: Date.now() }));
           }
-        } catch (_e) {}
+          
+          const numBase = Number(base_price);
+          if (Number.isFinite(numBase) && numBase > 0) {
+            setLiveBasesUsd((prev) =>
+              prev[normalized] === numBase ? prev : { ...prev, [normalized]: numBase }
+            );
+          }
+        } catch (_e) {
+          console.warn('[Account WS] 메시지 파싱 실패:', _e.message);
+        }
       };
-      ws.onclose = () => { wsRef.current = null; };
-    } catch (_e) {}
+      ws.onclose = () => {
+        console.log('[Account WS] 연결 끊김');
+        wsRef.current = null;
+      };
+    } catch (_e) {
+      console.error('[Account WS] 연결 실패:', _e.message);
+    }
   }, []);
 
   useEffect(() => {
@@ -642,6 +680,7 @@ export default function AccountScreen() {
                   matchingTrade={realtimeTrades.find(
                     (t) => normalizeTicker(t.ticker) === normalizeTicker(item.ticker)
                   )}
+                  liveBasePrice={liveBasesUsd[normalizeTicker(item.ticker)]}
                   onPress={(it) => {
                     setSelected(it);
                     setSheetOpen(true);
@@ -817,14 +856,12 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   
-  // 하단 실시간/레벨 영역 스타일
+  // 하단 실시간/레벨 영역 스타일 (구분선 제거 및 간격 극적 압축)
   cardBottomRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 10,
-    paddingTop: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: tdsDark.border,
+    marginTop: 6,
+    paddingTop: 0,
   },
   gaugeContainer: {
     flex: 1,
@@ -832,9 +869,17 @@ const styles = StyleSheet.create({
   },
   gaugeTextRowTop: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 3,
+    position: 'relative',
+    height: 18,
+    marginBottom: 2,
+  },
+  gaugeBasePriceWrapper: {
+    position: 'absolute',
+    left: '50%',
+    transform: [{ translateX: -18 }],
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   gaugeBasePriceText: {
     fontSize: 11,
