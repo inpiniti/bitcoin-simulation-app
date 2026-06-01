@@ -932,13 +932,9 @@ const styles = StyleSheet.create({
   levelImageWrapper: {
     width: 32, // 32x32 사이즈로 컴팩트하게
     height: 32,
-    borderRadius: 16, // 완벽한 둥근 배지 형태
-    backgroundColor: '#fff', // 캐릭터 배경 흰색을 배지 서클 안에 자연스럽게 가둠!
     overflow: 'hidden',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: tdsDark.border,
   },
   levelImage: {
     width: 28,
