@@ -102,6 +102,19 @@ export default function TabLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="analysis"
+        options={{
+          title: 'AI 분석',
+          tabBarIcon: ({ focused, size }) => (
+            <Ionicons
+              name="analytics"
+              color={focused ? tdsColors.blue700 : tdsColors.grey400}
+              size={size}
+            />
+          ),
+        }}
+      />
     </Tabs>
   );
 }
