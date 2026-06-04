@@ -15,11 +15,32 @@ import { requestCompanyAnalysis } from '../../lib/companyAnalysisApi';
 
 export default function AnalysisScreen() {
   const [ticker, setTicker] = useState('');
-  const [analysisType, setAnalysisType] = useState('market'); // 'market' or 'earnings'
+  const [analysisType, setAnalysisType] = useState('market'); // 'market', 'earnings', 'valuation', 'preview', 'moat', 'risk'
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [metaInfo, setMetaInfo] = useState(null);
+
+  const analysisTypes = [
+    { id: 'market', label: '기업 분석', icon: 'business-outline' },
+    { id: 'earnings', label: '실적 리뷰', icon: 'document-text-outline' },
+    { id: 'valuation', label: '적정 가치', icon: 'scale-outline' },
+    { id: 'preview', label: '실적 프리뷰', icon: 'trending-up-outline' },
+    { id: 'moat', label: '해자 분석', icon: 'shield-checkmark-outline' },
+    { id: 'risk', label: '리스크 감지', icon: 'alert-circle-outline' },
+  ];
+
+  const getAnalysisTypeLabel = (type) => {
+    switch (type) {
+      case 'market': return '기업 기본 분석';
+      case 'earnings': return '실적 리뷰';
+      case 'valuation': return '적정 가치 평가';
+      case 'preview': return '실적 프리뷰';
+      case 'moat': return '해자 및 AI 준비도';
+      case 'risk': return '리스크 & 경고 신호';
+      default: return '기업 분석';
+    }
+  };
 
   const handleRequestAnalysis = async () => {
     if (!ticker.trim()) {
@@ -66,7 +87,7 @@ export default function AnalysisScreen() {
       <View style={styles.formCard}>
         <View style={styles.inputWrapper}>
           <TextInput
-            style={styles.textInput}
+             style={styles.textInput}
             placeholder="주식 티커 입력 (예: TSLA, NVDA)"
             placeholderTextColor={tdsDark.textTertiary}
             value={ticker}
@@ -85,37 +106,31 @@ export default function AnalysisScreen() {
           )}
         </View>
 
-        {/* 분석 타입 탭 선택 */}
-        <View style={styles.tabContainer}>
-          <TouchableOpacity
-            style={[styles.typeTab, analysisType === 'market' && styles.typeTabActive]}
-            onPress={() => setAnalysisType('market')}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name="business-outline"
-              size={16}
-              color={analysisType === 'market' ? '#fff' : tdsDark.textSecondary}
-            />
-            <Text style={[styles.tabText, analysisType === 'market' && styles.tabTextActive]}>
-              기업 분석 (Market)
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.typeTab, analysisType === 'earnings' && styles.typeTabActive]}
-            onPress={() => setAnalysisType('earnings')}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name="document-text-outline"
-              size={16}
-              color={analysisType === 'earnings' ? '#fff' : tdsDark.textSecondary}
-            />
-            <Text style={[styles.tabText, analysisType === 'earnings' && styles.tabTextActive]}>
-              실적 리뷰 (Earnings)
-            </Text>
-          </TouchableOpacity>
-        </View>
+        {/* 분석 타입 칩 리스트 선택 */}
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false} 
+          style={styles.tabScrollContainer}
+          contentContainerStyle={styles.tabContainer}
+        >
+          {analysisTypes.map((type) => (
+            <TouchableOpacity
+              key={type.id}
+              style={[styles.typeTab, analysisType === type.id && styles.typeTabActive]}
+              onPress={() => setAnalysisType(type.id)}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={type.icon}
+                size={14}
+                color={analysisType === type.id ? '#fff' : tdsDark.textSecondary}
+              />
+              <Text style={[styles.tabText, analysisType === type.id && styles.tabTextActive]}>
+                {type.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
 
         {/* 실행 버튼 */}
         <TouchableOpacity
@@ -153,7 +168,7 @@ export default function AnalysisScreen() {
                 <Text style={styles.reportBadgeText}>{metaInfo?.ticker}</Text>
               </View>
               <Text style={styles.reportDate}>
-                분석일: {metaInfo?.analysis_date} | {metaInfo?.analysis_type === 'market' ? '기업 기본 분석' : '분시 실적 리뷰'}
+                분석일: {metaInfo?.analysis_date} | {getAnalysisTypeLabel(metaInfo?.analysis_type)}
               </Text>
             </View>
             <Text style={styles.reportMarkdown}>{report}</Text>
@@ -218,19 +233,22 @@ const styles = StyleSheet.create({
   },
   clearBtn: { padding: 4 },
 
+  tabScrollContainer: {
+    marginBottom: 16,
+  },
   tabContainer: {
     flexDirection: 'row',
     gap: 8,
-    marginBottom: 16,
+    paddingRight: 16,
   },
   typeTab: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    paddingVertical: 10,
-    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
     backgroundColor: tdsDark.bgSecondary,
     borderWidth: 1,
     borderColor: tdsDark.border,
@@ -240,7 +258,7 @@ const styles = StyleSheet.create({
     borderColor: tdsColors.blue700,
   },
   tabText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     color: tdsDark.textSecondary,
   },
