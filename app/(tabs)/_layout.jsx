@@ -76,19 +76,7 @@ export default function TabLayout() {
           ),
         }}
       />
-      <Tabs.Screen
-        name="news"
-        options={{
-          title: '뉴스',
-          tabBarIcon: ({ focused, size }) => (
-            <Ionicons
-              name="newspaper"
-              color={focused ? tdsColors.blue700 : tdsColors.grey400}
-              size={size}
-            />
-          ),
-        }}
-      />
+
       <Tabs.Screen
         name="portfolio"
         options={{
