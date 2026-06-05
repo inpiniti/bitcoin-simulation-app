@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { tdsDark, tdsColors } from '../../constants/tdsColors';
+import Markdown from 'react-native-markdown-display';
 import { requestCompanyAnalysis } from '../../lib/companyAnalysisApi';
 import { LogoBadge } from '../../components/tds/LogoBadge';
 import { ListRow } from '../../components/tds/ListRow';
@@ -40,264 +41,125 @@ const DOMESTIC_FALLBACK_DATA = [
   { stock: "003550", name: "LG" },
 ];
 
+const markdownStyles = {
+  body: {
+    color: tdsDark.textPrimary,
+    fontSize: 14,
+    lineHeight: 22,
+  },
+  heading1: {
+    color: tdsColors.blue600,
+    fontSize: 19,
+    fontWeight: '800',
+    marginTop: 14,
+    marginBottom: 8,
+    letterSpacing: -0.3,
+  },
+  heading2: {
+    color: tdsColors.blue600,
+    fontSize: 17,
+    fontWeight: '800',
+    marginTop: 12,
+    marginBottom: 6,
+    letterSpacing: -0.3,
+  },
+  heading3: {
+    color: tdsColors.blue600,
+    fontSize: 15,
+    fontWeight: '800',
+    marginTop: 10,
+    marginBottom: 4,
+    letterSpacing: -0.3,
+  },
+  heading4: {
+    color: tdsColors.blue600,
+    fontSize: 14,
+    fontWeight: '800',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  heading5: {
+    color: tdsColors.blue600,
+    fontSize: 13,
+    fontWeight: '800',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  strong: {
+    fontWeight: '700',
+    color: tdsDark.textPrimary,
+  },
+  em: {
+    fontStyle: 'italic',
+    color: tdsDark.textSecondary,
+  },
+  hr: {
+    backgroundColor: tdsDark.border,
+    height: 1,
+    marginVertical: 12,
+  },
+  blockquote: {
+    borderLeftWidth: 3,
+    borderLeftColor: tdsColors.blue500,
+    backgroundColor: `${tdsColors.blue500}08`,
+    paddingLeft: 10,
+    paddingVertical: 6,
+    marginVertical: 8,
+    borderRadius: 4,
+  },
+  code_inline: {
+    fontSize: 13,
+    backgroundColor: tdsDark.bgSecondary,
+    color: tdsColors.blue700,
+    paddingHorizontal: 4,
+    borderRadius: 4,
+    fontWeight: '600',
+  },
+  bullet_list: {
+    marginVertical: 4,
+  },
+  ordered_list: {
+    marginVertical: 4,
+  },
+  table: {
+    borderWidth: 1,
+    borderColor: tdsDark.border,
+    borderRadius: 8,
+    overflow: 'hidden',
+    marginVertical: 10,
+  },
+  thead: {
+    backgroundColor: tdsDark.bgSecondary,
+  },
+  th: {
+    padding: 8,
+    fontWeight: '700',
+    color: tdsDark.textPrimary,
+    borderWidth: 0.5,
+    borderColor: tdsDark.border,
+    fontSize: 12,
+  },
+  tr: {
+    borderBottomWidth: 1,
+    borderBottomColor: tdsDark.border,
+  },
+  td: {
+    padding: 8,
+    color: tdsDark.textSecondary,
+    borderWidth: 0.5,
+    borderColor: tdsDark.border,
+    fontSize: 12,
+  },
+};
+
 const MarkdownRenderer = React.memo(({ content }) => {
   if (!content) return null;
 
-  const lines = content.split('\n');
-  const renderedElements = [];
-
-  const parseInline = (text) => {
-    if (!text) return null;
-
-    // Split by bold (**bold**), italic (*italic*), or inline code (`code`)
-    const parts = text.split(/(\*\*.*?\*\*|\*.*?\*|`.*?`)/);
-
-    return parts.map((part, index) => {
-      if (!part) return null;
-
-      if (part.startsWith('**') && part.endsWith('**')) {
-        return (
-          <Text
-            key={`bold-${index}`}
-            style={{
-              fontWeight: '700',
-              color: tdsDark.textPrimary,
-            }}
-          >
-            {part.slice(2, -2)}
-          </Text>
-        );
-      }
-
-      if (part.startsWith('*') && part.endsWith('*')) {
-        return (
-          <Text
-            key={`italic-${index}`}
-            style={{
-              fontStyle: 'italic',
-              color: tdsDark.textSecondary,
-            }}
-          >
-            {part.slice(1, -1)}
-          </Text>
-        );
-      }
-
-      if (part.startsWith('`') && part.endsWith('`')) {
-        return (
-          <Text
-            key={`code-${index}`}
-            style={{
-              fontSize: 13,
-              backgroundColor: tdsDark.bgSecondary,
-              color: tdsColors.blue700,
-              paddingHorizontal: 4,
-              borderRadius: 4,
-              fontWeight: '600',
-            }}
-          >
-            {part.slice(1, -1)}
-          </Text>
-        );
-      }
-
-      return (
-        <Text key={`plain-${index}`} style={{ color: tdsDark.textPrimary }}>
-          {part}
-        </Text>
-      );
-    });
-  };
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-
-    // Empty line
-    if (line.trim() === '') {
-      renderedElements.push(<View key={`empty-${i}`} style={{ height: 6 }} />);
-      continue;
-    }
-
-    // Horizontal Rule
-    if (line.trim() === '---') {
-      renderedElements.push(
-        <View
-          key={`hr-${i}`}
-          style={{
-            height: 1,
-            backgroundColor: tdsDark.border,
-            marginVertical: 12,
-          }}
-        />
-      );
-      continue;
-    }
-
-    // Headers (e.g., ### Title or ## Title)
-    const headerMatch = line.match(/^(#{1,6})\s+(.+)$/);
-    if (headerMatch) {
-      const level = headerMatch[1].length;
-      const text = headerMatch[2];
-
-      let fontSize = 14;
-      let marginVertical = 8;
-      if (level === 1) { fontSize = 19; marginVertical = 14; }
-      else if (level === 2) { fontSize = 17; marginVertical = 12; }
-      else if (level === 3) { fontSize = 15; marginVertical = 10; }
-
-      renderedElements.push(
-        <Text
-          key={`header-${i}`}
-          style={{
-            fontSize,
-            fontWeight: '800',
-            color: tdsColors.blue600,
-            marginTop: marginVertical,
-            marginBottom: marginVertical / 2,
-            letterSpacing: -0.3,
-          }}
-        >
-          {parseInline(text)}
-        </Text>
-      );
-      continue;
-    }
-
-    // Blockquotes (e.g. > Warning)
-    const blockquoteMatch = line.match(/^>\s*(.+)$/);
-    if (blockquoteMatch) {
-      const text = blockquoteMatch[1];
-      renderedElements.push(
-        <View
-          key={`blockquote-${i}`}
-          style={{
-            borderLeftWidth: 3,
-            borderLeftColor: tdsColors.blue500,
-            paddingLeft: 10,
-            marginVertical: 8,
-            backgroundColor: `${tdsColors.blue500}08`,
-            borderRadius: 4,
-            paddingVertical: 6,
-          }}
-        >
-          <Text
-            style={{
-              fontSize: 13.5,
-              color: tdsDark.textSecondary,
-              lineHeight: 19,
-              fontStyle: 'italic',
-            }}
-          >
-            {parseInline(text)}
-          </Text>
-        </View>
-      );
-      continue;
-    }
-
-    // List item (e.g., * Item or - Item)
-    const listMatch = line.match(/^(\s*)([\*\-\+•])\s+(.+)$/);
-    if (listMatch) {
-      const indent = listMatch[1].length;
-      const text = listMatch[3];
-      const depth = Math.floor(indent / 2);
-
-      renderedElements.push(
-        <View
-          key={`list-${i}`}
-          style={{
-            flexDirection: 'row',
-            paddingLeft: depth * 14,
-            marginVertical: 3,
-            alignItems: 'flex-start',
-          }}
-        >
-          <Text
-            style={{
-              color: depth % 2 === 0 ? tdsColors.blue500 : tdsDark.textTertiary,
-              marginRight: 6,
-              fontSize: 14,
-              lineHeight: 21,
-            }}
-          >
-            {depth % 2 === 0 ? '•' : '◦'}
-          </Text>
-          <Text
-            style={{
-              flex: 1,
-              fontSize: 14,
-              color: tdsDark.textPrimary,
-              lineHeight: 21,
-            }}
-          >
-            {parseInline(text)}
-          </Text>
-        </View>
-      );
-      continue;
-    }
-
-    // Numbered ordered list (e.g., 1. Item)
-    const orderedListMatch = line.match(/^(\s*)(\d+)\.\s+(.+)$/);
-    if (orderedListMatch) {
-      const indent = orderedListMatch[1].length;
-      const num = orderedListMatch[2];
-      const text = orderedListMatch[3];
-      const depth = Math.floor(indent / 2);
-
-      renderedElements.push(
-        <View
-          key={`ordered-${i}`}
-          style={{
-            flexDirection: 'row',
-            paddingLeft: depth * 14,
-            marginVertical: 3,
-            alignItems: 'flex-start',
-          }}
-        >
-          <Text
-            style={{
-              color: tdsColors.blue500,
-              marginRight: 6,
-              fontSize: 14,
-              fontWeight: '600',
-              lineHeight: 21,
-            }}
-          >
-            {num}.
-          </Text>
-          <Text
-            style={{
-              flex: 1,
-              fontSize: 14,
-              color: tdsDark.textPrimary,
-              lineHeight: 21,
-            }}
-          >
-            {parseInline(text)}
-          </Text>
-        </View>
-      );
-      continue;
-    }
-
-    // Regular paragraph
-    renderedElements.push(
-      <Text
-        key={`para-${i}`}
-        style={{
-          fontSize: 14,
-          color: tdsDark.textPrimary,
-          lineHeight: 22,
-          marginVertical: 2,
-        }}
-      >
-        {parseInline(line)}
-      </Text>
-    );
-  }
-
-  return <View style={{ paddingVertical: 4 }}>{renderedElements}</View>;
+  return (
+    <Markdown style={markdownStyles}>
+      {content}
+    </Markdown>
+  );
 });
 
 export default function AnalysisScreen() {
