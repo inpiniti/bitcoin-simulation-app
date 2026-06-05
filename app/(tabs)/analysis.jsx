@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   SafeAreaView,
   View,
@@ -12,14 +12,112 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { tdsDark, tdsColors } from '../../constants/tdsColors';
 import { requestCompanyAnalysis } from '../../lib/companyAnalysisApi';
+import { LogoBadge } from '../../components/tds/LogoBadge';
+import { ListRow } from '../../components/tds/ListRow';
+import { BottomSheet } from '../../components/tds/BottomSheet';
+import { Button } from '../../components/tds/Button';
+import { fetchPortfolioData } from '../../lib/portfolioApi';
+import { fetchKospiMarketCap } from '../../lib/kisApi';
+import { PORTFOLIO_DATA as US_FALLBACK_DATA } from '../../lib/portfolioData';
+import useStore from '../../store/useStore';
+
+const DOMESTIC_FALLBACK_DATA = [
+  { stock: "005930", name: "삼성전자" },
+  { stock: "000660", name: "SK하이닉스" },
+  { stock: "373220", name: "LG에너지솔루션" },
+  { stock: "207940", name: "삼성바이오로직스" },
+  { stock: "005380", name: "현대차" },
+  { stock: "000270", name: "기아" },
+  { stock: "068270", name: "셀트리온" },
+  { stock: "105560", name: "KB금융" },
+  { stock: "055550", name: "신한지주" },
+  { stock: "005490", name: "POSCO홀딩스" },
+  { stock: "035420", name: "NAVER" },
+  { stock: "035720", name: "카카오" },
+  { stock: "247540", name: "에코프로비엠" },
+  { stock: "086520", name: "에코프로" },
+  { stock: "096770", name: "SK이노베이션" },
+  { stock: "003550", name: "LG" },
+];
 
 export default function AnalysisScreen() {
+  const marketType = useStore((s) => s.marketType);
+  const setMarketType = useStore((s) => s.setMarketType);
+  const authMode = useStore((s) => s.authMode);
+
   const [ticker, setTicker] = useState('');
+  const [tickerName, setTickerName] = useState('');
   const [analysisType, setAnalysisType] = useState('market'); // 'market', 'earnings', 'valuation', 'preview', 'moat', 'risk'
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [metaInfo, setMetaInfo] = useState(null);
+  
+  const [showBottomSheet, setShowBottomSheet] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  // 주식 목록 저장을 위한 상태
+  const [overseasStocks, setOverseasStocks] = useState([]);
+  const [domesticStocks, setDomesticStocks] = useState([]);
+  const [stocksLoading, setStocksLoading] = useState(false);
+
+  // 해외/국내 주식 목록 불러오기
+  const loadStocks = useCallback(async () => {
+    setStocksLoading(true);
+    try {
+      if (marketType === 'overseas') {
+        if (overseasStocks.length > 0) return;
+        try {
+          const res = await fetchPortfolioData();
+          setOverseasStocks(res.based_on_stock || US_FALLBACK_DATA);
+        } catch (e) {
+          console.warn('[Analysis] Fetch overseas stocks failed, fallback used');
+          setOverseasStocks(US_FALLBACK_DATA);
+        }
+      } else {
+        if (domesticStocks.length > 0) return;
+        try {
+          if (authMode !== 'guest' && authMode !== 'locked') {
+            const rows = await fetchKospiMarketCap('2001');
+            const stocks = rows.map(r => ({ stock: r.stock, name: r.name }));
+            setDomesticStocks(stocks.length > 0 ? stocks : DOMESTIC_FALLBACK_DATA);
+          } else {
+            setDomesticStocks(DOMESTIC_FALLBACK_DATA);
+          }
+        } catch (e) {
+          console.warn('[Analysis] Fetch domestic stocks failed, fallback used');
+          setDomesticStocks(DOMESTIC_FALLBACK_DATA);
+        }
+      }
+    } finally {
+      setStocksLoading(false);
+    }
+  }, [marketType, overseasStocks.length, domesticStocks.length, authMode]);
+
+  useEffect(() => {
+    loadStocks();
+  }, [loadStocks]);
+
+  // 마켓 타입 변경 시 선택 종목 초기화
+  useEffect(() => {
+    setTicker('');
+    setTickerName('');
+    setSearchQuery('');
+  }, [marketType]);
+
+  const currentStocks = useMemo(() => {
+    return marketType === 'overseas' ? overseasStocks : domesticStocks;
+  }, [marketType, overseasStocks, domesticStocks]);
+
+  const filteredStocks = useMemo(() => {
+    if (!searchQuery.trim()) return currentStocks;
+    const q = searchQuery.toLowerCase().trim();
+    return currentStocks.filter(
+      (s) =>
+        s.stock.toLowerCase().includes(q) ||
+        (s.name && s.name.toLowerCase().includes(q))
+    );
+  }, [searchQuery, currentStocks]);
 
   const analysisTypes = [
     { id: 'market', label: '기업 분석', icon: 'business-outline' },
@@ -43,8 +141,8 @@ export default function AnalysisScreen() {
   };
 
   const handleRequestAnalysis = async () => {
-    if (!ticker.trim()) {
-      setErrorMsg('티커(예: AAPL, TSLA)를 입력해 주세요.');
+    if (!ticker) {
+      setErrorMsg(marketType === 'overseas' ? '분석할 미국 주식을 선택해 주세요.' : '분석할 국내 주식을 선택해 주세요.');
       return;
     }
     
@@ -85,25 +183,46 @@ export default function AnalysisScreen() {
 
       {/* 입력 폼 */}
       <View style={styles.formCard}>
-        <View style={styles.inputWrapper}>
-          <TextInput
-             style={styles.textInput}
-            placeholder="주식 티커 입력 (예: TSLA, NVDA)"
-            placeholderTextColor={tdsDark.textTertiary}
-            value={ticker}
-            onChangeText={(text) => {
-              setTicker(text);
-              setErrorMsg('');
+        <View style={styles.inputRow}>
+          {/* 종목 선택 버튼 */}
+          <TouchableOpacity 
+            style={styles.stockSelectBtn} 
+            onPress={() => {
+              setSearchQuery('');
+              setShowBottomSheet(true);
             }}
-            autoCapitalize="characters"
-            returnKeyType="search"
-            onSubmitEditing={handleRequestAnalysis}
-          />
-          {ticker.length > 0 && (
-            <TouchableOpacity onPress={() => setTicker('')} style={styles.clearBtn}>
-              <Ionicons name="close-circle" size={18} color={tdsDark.textTertiary} />
+            activeOpacity={0.7}
+          >
+            {ticker ? (
+              <View style={styles.selectedStockContainer}>
+                <LogoBadge ticker={ticker} name={tickerName} size={24} />
+                <Text style={styles.selectedStockText} numberOfLines={1}>
+                  {ticker}  <Text style={styles.selectedStockName}>{tickerName}</Text>
+                </Text>
+              </View>
+            ) : (
+              <Text style={styles.placeholderText}>분석할 종목을 선택하세요</Text>
+            )}
+            <Ionicons name="chevron-down" size={16} color={tdsDark.textTertiary} style={styles.chevronIcon} />
+          </TouchableOpacity>
+
+          {/* 미장 / 국장 토글 버튼 */}
+          <View style={styles.marketToggleContainer}>
+            <TouchableOpacity 
+              style={[styles.marketBtn, marketType === 'overseas' && styles.marketBtnActive]}
+              onPress={() => setMarketType('overseas')}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.marketBtnText, marketType === 'overseas' && styles.marketBtnTextActive]}>미장</Text>
             </TouchableOpacity>
-          )}
+            <TouchableOpacity 
+              style={[styles.marketBtn, marketType === 'domestic' && styles.marketBtnActive]}
+              onPress={() => setMarketType('domestic')}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.marketBtnText, marketType === 'domestic' && styles.marketBtnTextActive]}>국장</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* 분석 타입 칩 리스트 선택 */}
@@ -177,10 +296,77 @@ export default function AnalysisScreen() {
           <View style={styles.emptyContainer}>
             <Ionicons name="analytics-outline" size={48} color={tdsDark.textTertiary} />
             <Text style={styles.emptyTitle}>보고서가 없습니다</Text>
-            <Text style={styles.emptyDesc}>분석하고자 하는 미국 주식 티커를 입력하고 리포트 생성을 눌러보세요.</Text>
+            <Text style={styles.emptyDesc}>분석하고자 하는 주식을 선택하고 리포트 생성을 눌러보세요.</Text>
           </View>
         )}
       </ScrollView>
+
+      {/* 종목 선택 BottomSheet */}
+      <BottomSheet
+        open={showBottomSheet}
+        onClose={() => setShowBottomSheet(false)}
+        title={marketType === 'overseas' ? '미국 주식 선택' : '국내 주식 선택'}
+        cta={
+          <Button onPress={() => setShowBottomSheet(false)} variant="weak" style={styles.sheetCloseBtn}>
+            닫기
+          </Button>
+        }
+      >
+        <View style={styles.sheetContent}>
+          {/* 검색 바 */}
+          <View style={styles.sheetSearchWrapper}>
+            <Ionicons name="search" size={16} color={tdsDark.textTertiary} style={styles.searchIcon} />
+            <TextInput
+              style={styles.sheetSearchInput}
+              placeholder="종목명 또는 티커 검색"
+              placeholderTextColor={tdsDark.textTertiary}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoCapitalize="none"
+              clearButtonMode="while-editing"
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.searchClearBtn}>
+                <Ionicons name="close-circle" size={16} color={tdsDark.textTertiary} />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* 종목 리스트 */}
+          <ScrollView 
+            style={styles.sheetScroll} 
+            contentContainerStyle={styles.sheetScrollContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            {stocksLoading ? (
+              <View style={styles.sheetLoadingContainer}>
+                <ActivityIndicator size="small" color={tdsColors.blue500} />
+                <Text style={styles.sheetLoadingText}>종목 목록을 불러오고 있습니다...</Text>
+              </View>
+            ) : filteredStocks.length > 0 ? (
+              filteredStocks.map((item) => (
+                <ListRow
+                  key={item.stock}
+                  onPress={() => {
+                    setTicker(item.stock);
+                    setTickerName(item.name || item.stock);
+                    setShowBottomSheet(false);
+                  }}
+                  left={<LogoBadge ticker={item.stock} name={item.name} size={36} />}
+                  title={item.name || item.stock}
+                  subtitle={item.stock}
+                  border={true}
+                  style={styles.sheetRow}
+                />
+              ))
+            ) : (
+              <View style={styles.sheetEmptyContainer}>
+                <Text style={styles.sheetEmptyText}>검색 결과가 없습니다.</Text>
+              </View>
+            )}
+          </ScrollView>
+        </View>
+      </BottomSheet>
     </SafeAreaView>
   );
 }
@@ -216,22 +402,141 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
-  inputWrapper: {
+  inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
+    marginBottom: 16,
+  },
+  stockSelectBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     backgroundColor: tdsDark.bgSecondary,
     borderRadius: 12,
     paddingHorizontal: 12,
     height: 48,
-    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: tdsDark.border,
   },
-  textInput: {
+  selectedStockContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     flex: 1,
-    fontSize: 14,
-    color: tdsDark.textPrimary,
-    fontWeight: '600',
   },
-  clearBtn: { padding: 4 },
+  selectedStockText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: tdsDark.textPrimary,
+    flex: 1,
+  },
+  selectedStockName: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: tdsDark.textSecondary,
+  },
+  placeholderText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: tdsDark.textTertiary,
+  },
+  chevronIcon: {
+    marginLeft: 4,
+  },
+  marketToggleContainer: {
+    flexDirection: 'row',
+    backgroundColor: tdsDark.bgSecondary,
+    borderRadius: 12,
+    padding: 3,
+    height: 48,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: tdsDark.border,
+  },
+  marketBtn: {
+    paddingHorizontal: 12,
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 9,
+  },
+  marketBtnActive: {
+    backgroundColor: tdsDark.bgCard,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  marketBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: tdsDark.textSecondary,
+  },
+  marketBtnTextActive: {
+    color: tdsColors.blue500,
+    fontWeight: '700',
+  },
+  sheetCloseBtn: {
+    width: '100%',
+  },
+  sheetContent: {
+    paddingTop: 8,
+  },
+  sheetSearchWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: tdsDark.bgSecondary,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    height: 40,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: tdsDark.border,
+  },
+  searchIcon: {
+    marginRight: 6,
+  },
+  sheetSearchInput: {
+    flex: 1,
+    fontSize: 13,
+    color: tdsDark.textPrimary,
+    fontWeight: '500',
+  },
+  searchClearBtn: {
+    padding: 4,
+  },
+  sheetScroll: {
+    maxHeight: 350,
+  },
+  sheetScrollContent: {
+    paddingBottom: 16,
+  },
+  sheetRow: {
+    paddingHorizontal: 8,
+    paddingVertical: 12,
+  },
+  sheetLoadingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 30,
+  },
+  sheetLoadingText: {
+    marginTop: 8,
+    fontSize: 12,
+    color: tdsDark.textSecondary,
+  },
+  sheetEmptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+  },
+  sheetEmptyText: {
+    fontSize: 13,
+    color: tdsDark.textTertiary,
+  },
 
   tabScrollContainer: {
     marginBottom: 16,
