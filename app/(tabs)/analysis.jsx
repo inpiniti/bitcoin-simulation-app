@@ -40,6 +40,266 @@ const DOMESTIC_FALLBACK_DATA = [
   { stock: "003550", name: "LG" },
 ];
 
+const MarkdownRenderer = React.memo(({ content }) => {
+  if (!content) return null;
+
+  const lines = content.split('\n');
+  const renderedElements = [];
+
+  const parseInline = (text) => {
+    if (!text) return null;
+
+    // Split by bold (**bold**), italic (*italic*), or inline code (`code`)
+    const parts = text.split(/(\*\*.*?\*\*|\*.*?\*|`.*?`)/);
+
+    return parts.map((part, index) => {
+      if (!part) return null;
+
+      if (part.startsWith('**') && part.endsWith('**')) {
+        return (
+          <Text
+            key={`bold-${index}`}
+            style={{
+              fontWeight: '700',
+              color: tdsDark.textPrimary,
+            }}
+          >
+            {part.slice(2, -2)}
+          </Text>
+        );
+      }
+
+      if (part.startsWith('*') && part.endsWith('*')) {
+        return (
+          <Text
+            key={`italic-${index}`}
+            style={{
+              fontStyle: 'italic',
+              color: tdsDark.textSecondary,
+            }}
+          >
+            {part.slice(1, -1)}
+          </Text>
+        );
+      }
+
+      if (part.startsWith('`') && part.endsWith('`')) {
+        return (
+          <Text
+            key={`code-${index}`}
+            style={{
+              fontSize: 13,
+              backgroundColor: tdsDark.bgSecondary,
+              color: tdsColors.blue700,
+              paddingHorizontal: 4,
+              borderRadius: 4,
+              fontWeight: '600',
+            }}
+          >
+            {part.slice(1, -1)}
+          </Text>
+        );
+      }
+
+      return (
+        <Text key={`plain-${index}`} style={{ color: tdsDark.textPrimary }}>
+          {part}
+        </Text>
+      );
+    });
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Empty line
+    if (line.trim() === '') {
+      renderedElements.push(<View key={`empty-${i}`} style={{ height: 6 }} />);
+      continue;
+    }
+
+    // Horizontal Rule
+    if (line.trim() === '---') {
+      renderedElements.push(
+        <View
+          key={`hr-${i}`}
+          style={{
+            height: 1,
+            backgroundColor: tdsDark.border,
+            marginVertical: 12,
+          }}
+        />
+      );
+      continue;
+    }
+
+    // Headers (e.g., ### Title or ## Title)
+    const headerMatch = line.match(/^(#{1,6})\s+(.+)$/);
+    if (headerMatch) {
+      const level = headerMatch[1].length;
+      const text = headerMatch[2];
+
+      let fontSize = 14;
+      let marginVertical = 8;
+      if (level === 1) { fontSize = 19; marginVertical = 14; }
+      else if (level === 2) { fontSize = 17; marginVertical = 12; }
+      else if (level === 3) { fontSize = 15; marginVertical = 10; }
+
+      renderedElements.push(
+        <Text
+          key={`header-${i}`}
+          style={{
+            fontSize,
+            fontWeight: '800',
+            color: tdsColors.blue600,
+            marginTop: marginVertical,
+            marginBottom: marginVertical / 2,
+            letterSpacing: -0.3,
+          }}
+        >
+          {parseInline(text)}
+        </Text>
+      );
+      continue;
+    }
+
+    // Blockquotes (e.g. > Warning)
+    const blockquoteMatch = line.match(/^>\s*(.+)$/);
+    if (blockquoteMatch) {
+      const text = blockquoteMatch[1];
+      renderedElements.push(
+        <View
+          key={`blockquote-${i}`}
+          style={{
+            borderLeftWidth: 3,
+            borderLeftColor: tdsColors.blue500,
+            paddingLeft: 10,
+            marginVertical: 8,
+            backgroundColor: `${tdsColors.blue500}08`,
+            borderRadius: 4,
+            paddingVertical: 6,
+          }}
+        >
+          <Text
+            style={{
+              fontSize: 13.5,
+              color: tdsDark.textSecondary,
+              lineHeight: 19,
+              fontStyle: 'italic',
+            }}
+          >
+            {parseInline(text)}
+          </Text>
+        </View>
+      );
+      continue;
+    }
+
+    // List item (e.g., * Item or - Item)
+    const listMatch = line.match(/^(\s*)([\*\-\+•])\s+(.+)$/);
+    if (listMatch) {
+      const indent = listMatch[1].length;
+      const text = listMatch[3];
+      const depth = Math.floor(indent / 2);
+
+      renderedElements.push(
+        <View
+          key={`list-${i}`}
+          style={{
+            flexDirection: 'row',
+            paddingLeft: depth * 14,
+            marginVertical: 3,
+            alignItems: 'flex-start',
+          }}
+        >
+          <Text
+            style={{
+              color: depth % 2 === 0 ? tdsColors.blue500 : tdsDark.textTertiary,
+              marginRight: 6,
+              fontSize: 14,
+              lineHeight: 21,
+            }}
+          >
+            {depth % 2 === 0 ? '•' : '◦'}
+          </Text>
+          <Text
+            style={{
+              flex: 1,
+              fontSize: 14,
+              color: tdsDark.textPrimary,
+              lineHeight: 21,
+            }}
+          >
+            {parseInline(text)}
+          </Text>
+        </View>
+      );
+      continue;
+    }
+
+    // Numbered ordered list (e.g., 1. Item)
+    const orderedListMatch = line.match(/^(\s*)(\d+)\.\s+(.+)$/);
+    if (orderedListMatch) {
+      const indent = orderedListMatch[1].length;
+      const num = orderedListMatch[2];
+      const text = orderedListMatch[3];
+      const depth = Math.floor(indent / 2);
+
+      renderedElements.push(
+        <View
+          key={`ordered-${i}`}
+          style={{
+            flexDirection: 'row',
+            paddingLeft: depth * 14,
+            marginVertical: 3,
+            alignItems: 'flex-start',
+          }}
+        >
+          <Text
+            style={{
+              color: tdsColors.blue500,
+              marginRight: 6,
+              fontSize: 14,
+              fontWeight: '600',
+              lineHeight: 21,
+            }}
+          >
+            {num}.
+          </Text>
+          <Text
+            style={{
+              flex: 1,
+              fontSize: 14,
+              color: tdsDark.textPrimary,
+              lineHeight: 21,
+            }}
+          >
+            {parseInline(text)}
+          </Text>
+        </View>
+      );
+      continue;
+    }
+
+    // Regular paragraph
+    renderedElements.push(
+      <Text
+        key={`para-${i}`}
+        style={{
+          fontSize: 14,
+          color: tdsDark.textPrimary,
+          lineHeight: 22,
+          marginVertical: 2,
+        }}
+      >
+        {parseInline(line)}
+      </Text>
+    );
+  }
+
+  return <View style={{ paddingVertical: 4 }}>{renderedElements}</View>;
+});
+
 export default function AnalysisScreen() {
   const marketType = useStore((s) => s.marketType);
   const setMarketType = useStore((s) => s.setMarketType);
@@ -290,7 +550,7 @@ export default function AnalysisScreen() {
                 분석일: {metaInfo?.analysis_date} | {getAnalysisTypeLabel(metaInfo?.analysis_type)}
               </Text>
             </View>
-            <Text style={styles.reportMarkdown}>{report}</Text>
+            <MarkdownRenderer content={report} />
           </View>
         ) : (
           <View style={styles.emptyContainer}>
