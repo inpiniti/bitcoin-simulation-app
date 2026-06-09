@@ -1,7 +1,8 @@
+import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { tdsDark } from '../../constants/tdsColors';
 
-export function ListRow({
+export const ListRow = React.memo(function ListRow({
   left,
   title,
   subtitle,
@@ -24,7 +25,7 @@ export function ListRow({
       {right && <View style={styles.rightSlot}>{right}</View>}
     </TouchableOpacity>
   );
-}
+});
 
 const styles = StyleSheet.create({
   row: {

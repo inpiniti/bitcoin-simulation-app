@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
 import { getLogoUrl } from '../../lib/logoCache';
@@ -12,7 +12,7 @@ const BADGE_COLORS = [
   '#06b6d4',
 ];
 
-export function LogoBadge({ name, ticker, size = 40 }) {
+export const LogoBadge = React.memo(function LogoBadge({ name, ticker, size = 40 }) {
   const url = getLogoUrl(ticker);
   const [loadFailed, setLoadFailed] = useState(false);
 
@@ -43,7 +43,7 @@ export function LogoBadge({ name, ticker, size = 40 }) {
       <Text style={[styles.letter, { fontSize: Math.round(size * 0.42) }]}>{letter}</Text>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   logoWrap: {

@@ -8,6 +8,7 @@ import {
   ScrollView,
   ActivityIndicator,
   StyleSheet,
+  FlatList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { tdsDark, tdsColors } from '../../constants/tdsColors';
@@ -292,6 +293,21 @@ export default function AnalysisScreen() {
     }
   };
 
+  const renderStockItem = useCallback(({ item }) => (
+    <ListRow
+      onPress={() => {
+        setTicker(item.stock);
+        setTickerName(item.name || item.stock);
+        setShowBottomSheet(false);
+      }}
+      left={<LogoBadge ticker={item.stock} name={item.name} size={36} />}
+      title={item.name || item.stock}
+      subtitle={item.stock}
+      border={true}
+      style={styles.sheetRow}
+    />
+  ), [setShowBottomSheet, setTicker, setTickerName]);
+
   return (
     <SafeAreaView style={styles.safe}>
       {/* 헤더 */}
@@ -454,39 +470,31 @@ export default function AnalysisScreen() {
             )}
           </View>
 
-          {/* 종목 리스트 */}
-          <ScrollView 
-            style={styles.sheetScroll} 
+          {/* 종목 리스트 - FlatList를 통한 대용량 가상화 리스트 렌더링 */}
+          <FlatList
+            data={filteredStocks}
+            keyExtractor={(item) => item.stock}
+            renderItem={renderStockItem}
+            style={styles.sheetScroll}
             contentContainerStyle={styles.sheetScrollContent}
             keyboardShouldPersistTaps="handled"
-          >
-            {stocksLoading ? (
-              <View style={styles.sheetLoadingContainer}>
-                <ActivityIndicator size="small" color={tdsColors.blue500} />
-                <Text style={styles.sheetLoadingText}>종목 목록을 불러오고 있습니다...</Text>
-              </View>
-            ) : filteredStocks.length > 0 ? (
-              filteredStocks.map((item) => (
-                <ListRow
-                  key={item.stock}
-                  onPress={() => {
-                    setTicker(item.stock);
-                    setTickerName(item.name || item.stock);
-                    setShowBottomSheet(false);
-                  }}
-                  left={<LogoBadge ticker={item.stock} name={item.name} size={36} />}
-                  title={item.name || item.stock}
-                  subtitle={item.stock}
-                  border={true}
-                  style={styles.sheetRow}
-                />
-              ))
-            ) : (
-              <View style={styles.sheetEmptyContainer}>
-                <Text style={styles.sheetEmptyText}>검색 결과가 없습니다.</Text>
-              </View>
-            )}
-          </ScrollView>
+            initialNumToRender={12}
+            maxToRenderPerBatch={10}
+            windowSize={5}
+            removeClippedSubviews={true}
+            ListEmptyComponent={
+              stocksLoading ? (
+                <View style={styles.sheetLoadingContainer}>
+                  <ActivityIndicator size="small" color={tdsColors.blue500} />
+                  <Text style={styles.sheetLoadingText}>종목 목록을 불러오고 있습니다...</Text>
+                </View>
+              ) : (
+                <View style={styles.sheetEmptyContainer}>
+                  <Text style={styles.sheetEmptyText}>검색 결과가 없습니다.</Text>
+                </View>
+              )
+            }
+          />
         </View>
       </BottomSheet>
     </SafeAreaView>
