@@ -175,6 +175,7 @@ export default function AnalysisScreen() {
   const [report, setReport] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [metaInfo, setMetaInfo] = useState(null);
+  const [macroData, setMacroData] = useState(null);
   
   const [showBottomSheet, setShowBottomSheet] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -275,6 +276,7 @@ export default function AnalysisScreen() {
     setErrorMsg('');
     setReport('');
     setMetaInfo(null);
+    setMacroData(null);
 
     try {
       const data = await requestCompanyAnalysis(ticker.trim(), analysisType);
@@ -285,6 +287,7 @@ export default function AnalysisScreen() {
           analysis_type: data.analysis_type,
           analysis_date: data.analysis_date,
         });
+        setMacroData(data.macro_data || null);
       } else {
         setErrorMsg('리포트 생성에 실패했습니다. 데이터를 다시 확인해주세요.');
       }
@@ -430,6 +433,14 @@ export default function AnalysisScreen() {
                 분석일: {metaInfo?.analysis_date} | {getAnalysisTypeLabel(metaInfo?.analysis_type)}
               </Text>
             </View>
+            
+            {metaInfo?.analysis_type === 'comprehensive' && (
+              <>
+                <MacroAssetAllocationGauge report={report} />
+                <MacroIndicatorScoreboard macroData={macroData} />
+              </>
+            )}
+            
             <MarkdownRenderer content={report} />
           </View>
         ) : (
@@ -500,6 +511,88 @@ export default function AnalysisScreen() {
         </View>
       </BottomSheet>
     </SafeAreaView>
+  );
+}
+
+// 자산배분 추천 비중 게이지바 컴포넌트
+function MacroAssetAllocationGauge({ report }) {
+  let stockRatio = 50;
+  let cashRatio = 50;
+  
+  if (report) {
+    const match1 = report.match(/주식\s*(?:비중)?\s*(\d+)\s*%\s*(?:vs|대)?\s*현금\s*(?:비중)?\s*(\d+)\s*%/);
+    const match2 = report.match(/주식\s*(?:비중)?\s*(\d+)\s*%[^0-9]+현금\s*(?:비중)?\s*(\d+)\s*%/);
+    const match3 = report.match(/주식\s*:\s*현금\s*=\s*(\d+)\s*:\s*(\d+)/);
+    
+    const match = match1 || match2 || match3;
+    if (match) {
+      const s = parseInt(match[1], 10);
+      const c = parseInt(match[2], 10);
+      if (s + c === 100 || (s > 0 && c > 0 && s + c <= 100)) {
+        stockRatio = s;
+        cashRatio = c;
+      }
+    }
+  }
+
+  return (
+    <View style={styles.gaugeContainer}>
+      <View style={styles.gaugeHeader}>
+        <Text style={styles.gaugeTitle}>권장 자산 배분 비중</Text>
+        <Text style={styles.gaugeSub}>포트폴리오 매니저의 거시경제 기반 권고</Text>
+      </View>
+      <View style={styles.gaugeBarWrapper}>
+        <View style={[styles.gaugeBarCash, { flex: cashRatio }]} />
+        <View style={[styles.gaugeBarStock, { flex: stockRatio }]} />
+      </View>
+      <View style={styles.gaugeLabelRow}>
+        <View style={styles.gaugeLabelItem}>
+          <View style={[styles.colorDot, { backgroundColor: '#10b981' }]} />
+          <Text style={styles.gaugeLabelText}>현금 보유 {cashRatio}%</Text>
+        </View>
+        <View style={styles.gaugeLabelItem}>
+          <View style={[styles.colorDot, { backgroundColor: '#ff5c00' }]} />
+          <Text style={styles.gaugeLabelText}>주식 투자 {stockRatio}%</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// 글로벌 매크로 지표 상황판 컴포넌트
+function MacroIndicatorScoreboard({ macroData }) {
+  if (!macroData || Object.keys(macroData).length === 0) return null;
+  const items = Object.values(macroData);
+  
+  return (
+    <View style={styles.macroDashboard}>
+      <Text style={styles.dashboardTitle}>실시간 글로벌 거시경제 지표</Text>
+      <View style={styles.indicatorsGrid}>
+        {items.map((item, idx) => {
+          const isUp = item.changePercent > 0;
+          const isZero = item.changePercent === 0;
+          let changeColor = '#3b82f6';
+          if (isUp) changeColor = '#ef4444';
+          if (isZero) changeColor = tdsDark.textSecondary;
+          
+          const arrow = isUp ? '▲' : (isZero ? '' : '▼');
+          let formattedPrice = item.price.toLocaleString(undefined, { maximumFractionDigits: 2 });
+          if (item.name.includes("환율")) {
+             formattedPrice = item.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+          }
+          
+          return (
+            <View key={idx} style={styles.indicatorCard}>
+              <Text style={styles.indicatorName} numberOfLines={1}>{item.name}</Text>
+              <Text style={styles.indicatorPrice}>{formattedPrice}</Text>
+              <Text style={[styles.indicatorChange, { color: changeColor }]}>
+                {arrow} {Math.abs(item.changePercent).toFixed(2)}%
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+    </View>
   );
 }
 
@@ -815,5 +908,103 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 18,
     paddingHorizontal: 30,
+  },
+  
+  // 글로벌 거시지표 & 자산배분 스타일
+  gaugeContainer: {
+    backgroundColor: tdsDark.bgSecondary,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: tdsDark.border,
+  },
+  gaugeHeader: {
+    marginBottom: 10,
+  },
+  gaugeTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: tdsDark.textPrimary,
+  },
+  gaugeSub: {
+    fontSize: 11,
+    color: tdsDark.textTertiary,
+    marginTop: 2,
+  },
+  gaugeBarWrapper: {
+    flexDirection: 'row',
+    height: 12,
+    borderRadius: 6,
+    overflow: 'hidden',
+    backgroundColor: tdsDark.bgCard,
+    marginBottom: 10,
+  },
+  gaugeBarCash: {
+    backgroundColor: '#10b981',
+  },
+  gaugeBarStock: {
+    backgroundColor: '#ff5c00',
+  },
+  gaugeLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  gaugeLabelItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  colorDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  gaugeLabelText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: tdsDark.textSecondary,
+  },
+  
+  macroDashboard: {
+    marginBottom: 16,
+  },
+  dashboardTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: tdsDark.textPrimary,
+    marginBottom: 10,
+    paddingLeft: 2,
+  },
+  indicatorsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  indicatorCard: {
+    flex: 1,
+    minWidth: '45%',
+    backgroundColor: tdsDark.bgSecondary,
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: tdsDark.border,
+  },
+  indicatorName: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: tdsDark.textTertiary,
+    marginBottom: 4,
+  },
+  indicatorPrice: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: tdsDark.textPrimary,
+    marginBottom: 2,
+  },
+  indicatorChange: {
+    fontSize: 11,
+    fontWeight: '700',
   },
 });
