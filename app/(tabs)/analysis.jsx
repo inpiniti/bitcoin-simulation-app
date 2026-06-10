@@ -170,7 +170,7 @@ export default function AnalysisScreen() {
 
   const [ticker, setTicker] = useState('');
   const [tickerName, setTickerName] = useState('');
-  const [analysisType, setAnalysisType] = useState('market'); // 'market', 'earnings', 'valuation', 'preview', 'moat', 'risk'
+  const [analysisType, setAnalysisType] = useState('comprehensive'); // 'comprehensive', 'market', 'earnings', 'valuation', 'preview', 'moat', 'risk'
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -237,12 +237,13 @@ export default function AnalysisScreen() {
     const q = searchQuery.toLowerCase().trim();
     return currentStocks.filter(
       (s) =>
-        s.stock.toLowerCase().includes(q) ||
-        (s.name && s.name.toLowerCase().includes(q))
+          s.stock.toLowerCase().includes(q) ||
+          (s.name && s.name.toLowerCase().includes(q))
     );
   }, [searchQuery, currentStocks]);
 
   const analysisTypes = [
+    { id: 'comprehensive', label: '종합 분석', icon: 'analytics-outline' },
     { id: 'market', label: '기업 분석', icon: 'business-outline' },
     { id: 'earnings', label: '실적 리뷰', icon: 'document-text-outline' },
     { id: 'valuation', label: '적정 가치', icon: 'scale-outline' },
@@ -253,6 +254,7 @@ export default function AnalysisScreen() {
 
   const getAnalysisTypeLabel = (type) => {
     switch (type) {
+      case 'comprehensive': return '종합 투자 분석';
       case 'market': return '기업 기본 분석';
       case 'earnings': return '실적 리뷰';
       case 'valuation': return '적정 가치 평가';
