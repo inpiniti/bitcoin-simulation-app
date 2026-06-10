@@ -207,6 +207,11 @@ export default function MacroScreen() {
                     <Text style={[styles.indicatorChange, { color: changeColor }]}>
                       {arrow} {Math.abs(item.changePercent).toFixed(2)}%
                     </Text>
+                    {item.twoHundredDayMaDiff !== undefined && item.fiftyTwoWeekPercentile !== undefined && (
+                      <Text style={styles.indicatorTrendSub}>
+                        200일선 {item.twoHundredDayMaDiff >= 0 ? '+' : ''}{item.twoHundredDayMaDiff.toFixed(1)}% (52주 {item.fiftyTwoWeekPercentile.toFixed(0)}%)
+                      </Text>
+                    )}
                   </View>
                 );
               })}
@@ -399,6 +404,12 @@ const styles = StyleSheet.create({
   indicatorChange: {
     fontSize: 11,
     fontWeight: '700',
+  },
+  indicatorTrendSub: {
+    fontSize: 9.5,
+    color: tdsDark.textTertiary,
+    marginTop: 3,
+    fontWeight: '500',
   },
 
   submitBtn: {
